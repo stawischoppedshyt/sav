@@ -14,6 +14,7 @@ local TargetParent = (gethui and gethui()) or CoreGui:FindFirstChild("RobloxGui"
 local FETCH_URL = "https://sav-jn22.onrender.com/list"
 local PLACE_ID = 104922659387499
 local LOG_LIFESPAN = 60 -- How many seconds before a log auto-clears
+local AutoJoinEnabled = false -- Tracks if Auto Join is ON or OFF
 
 -- Clean up old versions
 if TargetParent:FindFirstChild("VanishHub_AutoJoiner") then
@@ -43,11 +44,12 @@ ToggleBtn.TextSize = 14
 ToggleBtn.BorderSizePixel = 0
 Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(0, 6)
 
--- SHADOW GLOW BACKGROUND (Now the Main Parent for Dragging)
+-- SHADOW GLOW BACKGROUND (Now Responsive!)
 local Shadow = Instance.new("ImageLabel", ScreenGui)
 Shadow.Name = "ShadowGlow"
-Shadow.Size = UDim2.new(0, 380, 0, 500)
-Shadow.Position = UDim2.new(0.5, -190, 0.5, -250)
+Shadow.AnchorPoint = Vector2.new(0.5, 0.5)
+Shadow.Position = UDim2.new(0.5, 0, 0.5, 0)
+Shadow.Size = UDim2.new(0.95, 0, 0.85, 0) -- Uses Scale so it shrinks on mobile
 Shadow.BackgroundTransparency = 1
 Shadow.Image = "rbxassetid://5028857084"
 Shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
@@ -56,10 +58,15 @@ Shadow.ScaleType = Enum.ScaleType.Slice
 Shadow.SliceCenter = Rect.new(24, 24, 276, 276)
 Shadow.Active = true
 
+-- Keeps PC size normal, but forces shrink on small screens
+local ShadowConstraint = Instance.new("UISizeConstraint", Shadow)
+ShadowConstraint.MaxSize = Vector2.new(380, 500)
+
 -- MAIN WINDOW (Child of Shadow)
 local MainFrame = Instance.new("Frame", Shadow)
-MainFrame.Size = UDim2.new(0, 340, 0, 460)
-MainFrame.Position = UDim2.new(0.5, -170, 0.5, -230)
+MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+MainFrame.Size = UDim2.new(1, -40, 1, -40) -- Fits perfectly inside shadow constraints
 MainFrame.BackgroundColor3 = Color3.fromRGB(11, 14, 17)
 MainFrame.BorderSizePixel = 0
 Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
@@ -75,7 +82,7 @@ local function update(input)
 end
 
 Shadow.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
         startPos = Shadow.Position
@@ -88,7 +95,7 @@ Shadow.InputBegan:Connect(function(input)
 end)
 
 Shadow.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement then
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
         dragInput = input
     end
 end)
@@ -143,13 +150,13 @@ SubLink.Font = Enum.Font.Gotham
 SubLink.TextXAlignment = Enum.TextXAlignment.Left
 
 ---------------------------------------------------------------------
--- TABS & LABELS
+-- TABS & LABELS (NOW FUNCTIONAL TOGGLE)
 ---------------------------------------------------------------------
 local AutoJoinerTab = Instance.new("TextButton", MainFrame)
 AutoJoinerTab.Size = UDim2.new(1, -30, 0, 35)
 AutoJoinerTab.Position = UDim2.new(0, 15, 0, 65)
-AutoJoinerTab.BackgroundColor3 = Color3.fromRGB(0, 150, 230)
-AutoJoinerTab.Text = "Auto Joiner"
+AutoJoinerTab.BackgroundColor3 = Color3.fromRGB(40, 45, 50) -- Default OFF color
+AutoJoinerTab.Text = "Auto Join: OFF"
 AutoJoinerTab.TextColor3 = Color3.new(1, 1, 1)
 AutoJoinerTab.Font = Enum.Font.GothamBold
 AutoJoinerTab.TextSize = 14
@@ -184,7 +191,7 @@ Line.BorderSizePixel = 0
 -- SCROLLING CONTENT
 ---------------------------------------------------------------------
 local Container = Instance.new("ScrollingFrame", MainFrame)
-Container.Size = UDim2.new(1, -30, 0, 250)
+Container.Size = UDim2.new(1, -30, 1, -200) -- Uses Scale so it shrinks properly
 Container.Position = UDim2.new(0, 15, 0, 145)
 Container.BackgroundColor3 = Color3.fromRGB(11, 14, 17)
 Container.BorderSizePixel = 0
@@ -270,6 +277,18 @@ Instance.new("UICorner", ClearBtn).CornerRadius = UDim.new(0, 6)
 CloseBtn.MouseButton1Click:Connect(function() Shadow.Visible = false end)
 ToggleBtn.MouseButton1Click:Connect(function() Shadow.Visible = not Shadow.Visible end)
 
+-- Auto Join Toggle Logic
+AutoJoinerTab.MouseButton1Click:Connect(function()
+    AutoJoinEnabled = not AutoJoinEnabled
+    if AutoJoinEnabled then
+        AutoJoinerTab.Text = "Auto Join: ON"
+        AutoJoinerTab.BackgroundColor3 = Color3.fromRGB(0, 150, 230) -- Turns Blue
+    else
+        AutoJoinerTab.Text = "Auto Join: OFF"
+        AutoJoinerTab.BackgroundColor3 = Color3.fromRGB(40, 45, 50) -- Turns Grey
+    end
+end)
+
 local function Fetch()
     local ok, res = pcall(function() return game:HttpGet(FETCH_URL) end)
     if ok then
@@ -279,9 +298,23 @@ local function Fetch()
         end
         for _, info in ipairs(data) do
             if not BlacklistedJobs[info.jobId] then
-                if not SeenJobs[info.jobId] then SeenJobs[info.jobId] = tick() end
+                
+                local isNewLog = false
+                
+                -- Mark as seen if new
+                if not SeenJobs[info.jobId] then 
+                    SeenJobs[info.jobId] = tick() 
+                    isNewLog = true
+                end
+                
                 if tick() - SeenJobs[info.jobId] < LOG_LIFESPAN then
                     AddServerEntry(info.jobId, info.rarity, info.gen)
+                    
+                    -- IF AUTO JOIN IS ON & THE LOG IS BRAND NEW -> TELEPORT IMMEDIATELY
+                    if AutoJoinEnabled and isNewLog then
+                        AutoJoinerTab.Text = "JOINING..."
+                        TeleportService:TeleportToPlaceInstance(PLACE_ID, info.jobId, LP)
+                    end
                 end
             end
         end
