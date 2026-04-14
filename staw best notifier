@@ -89,6 +89,17 @@ Controls.Position = UDim2.new(0, 12, 0, 100)
 Controls.BackgroundColor3 = Color3.fromRGB(25, 24, 31)
 Instance.new("UICorner", Controls)
 
+-- FIX: AutoJoin Text Label Added
+local AJ_Label = Instance.new("TextLabel", Controls)
+AJ_Label.Size = UDim2.new(0, 60, 0, 20)
+AJ_Label.Position = UDim2.new(0, 12, 0, 15)
+AJ_Label.Text = "autojoin"
+AJ_Label.TextColor3 = Color3.fromRGB(200, 200, 200)
+AJ_Label.Font = "Gotham"
+AJ_Label.TextSize = 12
+AJ_Label.BackgroundTransparency = 1
+AJ_Label.TextXAlignment = "Left"
+
 -- AutoJoin Toggle
 local ToggleBtn = Instance.new("TextButton", Controls)
 ToggleBtn.Size = UDim2.new(0, 38, 0, 20)
@@ -109,12 +120,14 @@ ToggleBtn.MouseButton1Click:Connect(function()
     Dot:TweenPosition(autojoinEnabled and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7), "Out", "Quad", 0.15, true)
 end)
 
--- Job ID Joiner
+-- FIX: Job ID Joiner (Placeholder Fixed)
 local IDInput = Instance.new("TextBox", Controls)
 IDInput.Size = UDim2.new(0.65, 0, 0, 30)
 IDInput.Position = UDim2.new(0, 12, 0, 50)
 IDInput.BackgroundColor3 = Color3.fromRGB(18, 17, 23)
-IDInput.PlaceholderText = "Paste JobId..."
+IDInput.Text = "" -- Ensure main text is empty
+IDInput.PlaceholderText = "Paste JobId here..." -- Corrected property
+IDInput.PlaceholderColor3 = Color3.fromRGB(100, 100, 100)
 IDInput.TextColor3 = Color3.new(1,1,1)
 IDInput.Font = "Gotham"
 IDInput.TextSize = 11
@@ -129,7 +142,11 @@ ManualJoin.TextColor3 = Color3.new(1,1,1)
 ManualJoin.Font = "GothamBold"
 ManualJoin.TextSize = 11
 Instance.new("UICorner", ManualJoin)
-ManualJoin.MouseButton1Click:Connect(function() TeleportService:TeleportToPlaceInstance(PLACE_ID, IDInput.Text, LP) end)
+ManualJoin.MouseButton1Click:Connect(function() 
+    if #IDInput.Text > 5 then
+        TeleportService:TeleportToPlaceInstance(PLACE_ID, IDInput.Text, LP) 
+    end
+end)
 
 -- Clear / Refresh Logs
 local LogActions = Instance.new("Frame", Main)
@@ -226,6 +243,7 @@ local function Refresh()
             local validPets = {}
             for _, pets in pairs(info.plots) do
                 for _, pet in pairs(pets) do
+                    -- STRICT FILTER: b/s required (fixes fuse items issue)
                     local g = pet.gen:lower()
                     if string.find(g, "b") or string.find(g, "s") then
                         table.insert(validPets, pet.name .. " (" .. pet.gen .. ")")
@@ -234,7 +252,10 @@ local function Refresh()
             end
             if #validPets > 0 then
                 AddLogEntry(info.jobId, table.concat(validPets, ", "))
-                if autojoinEnabled then TeleportService:TeleportToPlaceInstance(PLACE_ID, info.jobId, LP) break end
+                if autojoinEnabled then 
+                    TeleportService:TeleportToPlaceInstance(PLACE_ID, info.jobId, LP) 
+                    break 
+                end
             end
         end
     else
