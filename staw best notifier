@@ -14,14 +14,29 @@ local ScreenGui = Instance.new("ScreenGui", TargetParent)
 ScreenGui.Name = "StawAutoJoiner"
 
 local autojoinEnabled = false
+local menuOpen = true
 
 -- DEVICE SCALING
 local isMobile = UserInputService.TouchEnabled
 local baseWidth = isMobile and 300 or 360
 local baseHeight = isMobile and 460 or 520
 
+-- Floating Toggle Button (Open/Close)
+local MainToggle = Instance.new("TextButton", ScreenGui)
+MainToggle.Name = "MainToggle"
+MainToggle.Size = UDim2.new(0, 50, 0, 50)
+MainToggle.Position = UDim2.new(0.05, 0, 0.4, 0)
+MainToggle.BackgroundColor3 = Color3.fromRGB(125, 45, 225)
+MainToggle.Text = "STAW"
+MainToggle.TextColor3 = Color3.new(1, 1, 1)
+MainToggle.Font = "GothamBold"
+MainToggle.TextSize = 12
+MainToggle.Draggable = true -- Simple drag for the toggle
+Instance.new("UICorner", MainToggle).CornerRadius = UDim.new(1, 0)
+
 -- Tight Purple Shadow Glow
 local Shadow = Instance.new("ImageLabel", ScreenGui)
+Shadow.Name = "Shadow"
 Shadow.AnchorPoint = Vector2.new(0.5, 0.5)
 Shadow.Position = UDim2.new(0.5, 0, 0.5, 0)
 Shadow.Size = UDim2.new(0, baseWidth + 15, 0, baseHeight + 15)
@@ -39,6 +54,12 @@ Main.AnchorPoint = Vector2.new(0.5, 0.5)
 Main.BackgroundColor3 = Color3.fromRGB(18, 17, 23)
 Main.BorderSizePixel = 0
 Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 8)
+
+-- Open/Close Logic
+MainToggle.MouseButton1Click:Connect(function()
+    menuOpen = not menuOpen
+    Shadow.Visible = menuOpen
+end)
 
 -- Top Bar
 local TopBar = Instance.new("Frame", Main)
@@ -82,14 +103,13 @@ InfoText.TextSize = 10
 InfoText.TextWrapped = true
 InfoText.BackgroundTransparency = 1
 
--- Controls Section
+-- Controls (AutoJoin + ID Joiner)
 local Controls = Instance.new("Frame", Main)
 Controls.Size = UDim2.new(1, -24, 0, 95)
 Controls.Position = UDim2.new(0, 12, 0, 100)
 Controls.BackgroundColor3 = Color3.fromRGB(25, 24, 31)
 Instance.new("UICorner", Controls)
 
--- FIX: AutoJoin Text Label Added
 local AJ_Label = Instance.new("TextLabel", Controls)
 AJ_Label.Size = UDim2.new(0, 60, 0, 20)
 AJ_Label.Position = UDim2.new(0, 12, 0, 15)
@@ -100,7 +120,6 @@ AJ_Label.TextSize = 12
 AJ_Label.BackgroundTransparency = 1
 AJ_Label.TextXAlignment = "Left"
 
--- AutoJoin Toggle
 local ToggleBtn = Instance.new("TextButton", Controls)
 ToggleBtn.Size = UDim2.new(0, 38, 0, 20)
 ToggleBtn.Position = UDim2.new(0, 75, 0, 15)
@@ -120,13 +139,12 @@ ToggleBtn.MouseButton1Click:Connect(function()
     Dot:TweenPosition(autojoinEnabled and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7), "Out", "Quad", 0.15, true)
 end)
 
--- FIX: Job ID Joiner (Placeholder Fixed)
 local IDInput = Instance.new("TextBox", Controls)
 IDInput.Size = UDim2.new(0.65, 0, 0, 30)
 IDInput.Position = UDim2.new(0, 12, 0, 50)
 IDInput.BackgroundColor3 = Color3.fromRGB(18, 17, 23)
-IDInput.Text = "" -- Ensure main text is empty
-IDInput.PlaceholderText = "Paste JobId here..." -- Corrected property
+IDInput.Text = ""
+IDInput.PlaceholderText = "Paste JobId here..."
 IDInput.PlaceholderColor3 = Color3.fromRGB(100, 100, 100)
 IDInput.TextColor3 = Color3.new(1,1,1)
 IDInput.Font = "Gotham"
@@ -143,12 +161,10 @@ ManualJoin.Font = "GothamBold"
 ManualJoin.TextSize = 11
 Instance.new("UICorner", ManualJoin)
 ManualJoin.MouseButton1Click:Connect(function() 
-    if #IDInput.Text > 5 then
-        TeleportService:TeleportToPlaceInstance(PLACE_ID, IDInput.Text, LP) 
-    end
+    if #IDInput.Text > 5 then TeleportService:TeleportToPlaceInstance(PLACE_ID, IDInput.Text, LP) end
 end)
 
--- Clear / Refresh Logs
+-- Action Buttons (Clear/Refresh)
 local LogActions = Instance.new("Frame", Main)
 LogActions.Size = UDim2.new(1, -24, 0, 30)
 LogActions.Position = UDim2.new(0, 12, 0, 205)
@@ -170,7 +186,7 @@ end
 local ClearBtn = StyleBtn("Clear Logs", UDim2.new(0, 0, 0, 0), Color3.fromRGB(40, 35, 45))
 local RefreshBtn = StyleBtn("Refresh Logs", UDim2.new(0.52, 0, 0, 0), Color3.fromRGB(125, 45, 225))
 
--- Scrolling Logs
+-- Vertical Scrolling Logs
 local Container = Instance.new("ScrollingFrame", Main)
 Container.Size = UDim2.new(1, -24, 1, -260)
 Container.Position = UDim2.new(0, 12, 0, 245)
@@ -180,7 +196,7 @@ Container.AutomaticCanvasSize = "Y"
 local Layout = Instance.new("UIListLayout", Container)
 Layout.Padding = UDim.new(0, 6)
 
--- Smooth Dragging Logic
+-- Smooth Dragging Logic for Shadow (Main GUI)
 local dragging, dragStart, startPos
 Shadow.InputBegan:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = true dragStart = i.Position startPos = Shadow.Position end
@@ -193,7 +209,7 @@ UserInputService.InputChanged:Connect(function(i)
 end)
 UserInputService.InputEnded:Connect(function() dragging = false end)
 
-local function AddLogEntry(jobId, text)
+local function AddLogEntry(jobId, petName, gen)
     local row = Instance.new("Frame", Container)
     row.Size = UDim2.new(1, 0, 0, 42)
     row.BackgroundColor3 = Color3.fromRGB(25, 24, 31)
@@ -202,7 +218,7 @@ local function AddLogEntry(jobId, text)
     local txt = Instance.new("TextLabel", row)
     txt.Size = UDim2.new(0.6, 0, 1, 0)
     txt.Position = UDim2.new(0, 10, 0, 0)
-    txt.Text = text
+    txt.Text = petName .. " (" .. gen .. ")"
     txt.TextColor3 = Color3.fromRGB(180, 180, 180)
     txt.Font = "Gotham"
     txt.TextSize = 10
@@ -214,7 +230,7 @@ local function AddLogEntry(jobId, text)
     cBtn.Position = UDim2.new(1, -100, 0.5, -12)
     cBtn.BackgroundTransparency = 1
     cBtn.Text = "copy"
-    cBtn.TextColor3 = Color3.fromRGB(100, 100, 100)
+    cBtn.TextColor3 = Color3.fromRGB(120, 120, 120)
     cBtn.Font = "Gotham"
     cBtn.TextSize = 10
 
@@ -240,21 +256,16 @@ local function Refresh()
         local data = HttpService:JSONDecode(res)
         for _, v in pairs(Container:GetChildren()) do if v:IsA("Frame") then v:Destroy() end end
         for _, info in ipairs(data) do
-            local validPets = {}
             for _, pets in pairs(info.plots) do
                 for _, pet in pairs(pets) do
-                    -- STRICT FILTER: b/s required (fixes fuse items issue)
                     local g = pet.gen:lower()
                     if string.find(g, "b") or string.find(g, "s") then
-                        table.insert(validPets, pet.name .. " (" .. pet.gen .. ")")
+                        AddLogEntry(info.jobId, pet.name, pet.gen)
+                        if autojoinEnabled then 
+                            TeleportService:TeleportToPlaceInstance(PLACE_ID, info.jobId, LP) 
+                            return 
+                        end
                     end
-                end
-            end
-            if #validPets > 0 then
-                AddLogEntry(info.jobId, table.concat(validPets, ", "))
-                if autojoinEnabled then 
-                    TeleportService:TeleportToPlaceInstance(PLACE_ID, info.jobId, LP) 
-                    break 
                 end
             end
         end
@@ -269,5 +280,4 @@ ClearBtn.MouseButton1Click:Connect(function()
 end)
 
 RefreshBtn.MouseButton1Click:Connect(Refresh)
-
 task.spawn(function() while task.wait(5) do Refresh() end end)
