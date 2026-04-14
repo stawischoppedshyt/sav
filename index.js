@@ -3,9 +3,9 @@ const app = express();
 app.use(express.json());
 
 let serverCache = [];
-const MAX_CACHE_SIZE = 100; // Prevents memory overflow on Free Tier
+const MAX_CACHE_SIZE = 50;
 
-// --- THE FIX: REQUEST QUEUE ---
+// Queue system to prevent Plan Overload
 let requestQueue = [];
 let isProcessing = false;
 
@@ -14,47 +14,38 @@ async function processQueue() {
     isProcessing = true;
 
     while (requestQueue.length > 0) {
-        const log = requestQueue.shift();
+        const data = requestQueue.shift();
         
-        // Check for duplicates before adding to live cache
-        const exists = serverCache.find(s => s.jobId === log.jobId);
-        if (!exists) {
-            serverCache.unshift({
-                ...log,
-                expiry: Date.now() + 60000 // 1 minute life
-            });
-        }
+        // Remove existing data for this server to prevent duplicates
+        serverCache = serverCache.filter(item => item.jobId !== data.jobId);
 
-        // Keep cache lean for Render Free Tier RAM limits
-        if (serverCache.length > MAX_CACHE_SIZE) {
-            serverCache.pop();
-        }
+        // Add the new server batch
+        serverCache.unshift({
+            jobId: data.jobId,
+            plots: data.plots,
+            gen: data.maxGen,
+            expiry: Date.now() + 65000 // 65 second lifespan
+        });
+
+        if (serverCache.length > MAX_CACHE_SIZE) serverCache.pop();
     }
-
     isProcessing = false;
 }
 
-// Receive logs from scanner
 app.post('/update', (req, res) => {
-    // Push into queue instead of processing immediately
+    if (!req.body.jobId) return res.status(400).send("No JobID");
     requestQueue.push(req.body);
-    processQueue(); 
-    
-    res.status(200).json({ status: "queued" });
+    processQueue();
+    res.status(200).json({ status: "success" });
 });
 
-// Fetch logs for GUI
 app.get('/list', (req, res) => {
     const now = Date.now();
-    // Filter out expired logs
     serverCache = serverCache.filter(log => log.expiry > now);
     res.json(serverCache);
 });
 
-// Keep-Awake Route
 app.get('/ping', (req, res) => res.send("Alive"));
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Render Server Online on Port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`API Online on Port ${PORT}`));
