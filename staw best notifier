@@ -13,8 +13,9 @@ local TargetParent = (gethui and gethui()) or CoreGui:FindFirstChild("RobloxGui"
 -- CONFIG
 local FETCH_URL = "https://sav-jn22.onrender.com/list"
 local PLACE_ID = 104922659387499
-local LOG_LIFESPAN = 60 -- How many seconds before a log auto-clears
-local AutoJoinEnabled = false -- Tracks if Auto Join is ON or OFF
+local LOG_LIFESPAN = 60 
+local AutoJoinEnabled = false 
+local isConnecting = false 
 
 -- Clean up old versions
 if TargetParent:FindFirstChild("VanishHub_AutoJoiner") then
@@ -32,7 +33,6 @@ local ScreenGui = Instance.new("ScreenGui", TargetParent)
 ScreenGui.Name = "VanishHub_AutoJoiner"
 ScreenGui.DisplayOrder = 100
 
--- TOP MIDDLE TOGGLE BUTTON
 local ToggleBtn = Instance.new("TextButton", ScreenGui)
 ToggleBtn.Size = UDim2.new(0, 120, 0, 30)
 ToggleBtn.Position = UDim2.new(0.5, -60, 0, 0)
@@ -44,12 +44,11 @@ ToggleBtn.TextSize = 14
 ToggleBtn.BorderSizePixel = 0
 Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(0, 6)
 
--- SHADOW GLOW BACKGROUND (Now Responsive!)
 local Shadow = Instance.new("ImageLabel", ScreenGui)
 Shadow.Name = "ShadowGlow"
 Shadow.AnchorPoint = Vector2.new(0.5, 0.5)
 Shadow.Position = UDim2.new(0.5, 0, 0.5, 0)
-Shadow.Size = UDim2.new(0.95, 0, 0.85, 0) -- Uses Scale so it shrinks on mobile
+Shadow.Size = UDim2.new(0.95, 0, 0.85, 0) 
 Shadow.BackgroundTransparency = 1
 Shadow.Image = "rbxassetid://5028857084"
 Shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
@@ -58,21 +57,19 @@ Shadow.ScaleType = Enum.ScaleType.Slice
 Shadow.SliceCenter = Rect.new(24, 24, 276, 276)
 Shadow.Active = true
 
--- Keeps PC size normal, but forces shrink on small screens
 local ShadowConstraint = Instance.new("UISizeConstraint", Shadow)
 ShadowConstraint.MaxSize = Vector2.new(380, 500)
 
--- MAIN WINDOW (Child of Shadow)
 local MainFrame = Instance.new("Frame", Shadow)
 MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-MainFrame.Size = UDim2.new(1, -40, 1, -40) -- Fits perfectly inside shadow constraints
+MainFrame.Size = UDim2.new(1, -40, 1, -40) 
 MainFrame.BackgroundColor3 = Color3.fromRGB(11, 14, 17)
 MainFrame.BorderSizePixel = 0
 Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
 
 ---------------------------------------------------------------------
--- DRAGGING FIX (Smooth Manual Sync)
+-- DRAGGING
 ---------------------------------------------------------------------
 local dragging, dragInput, dragStart, startPos
 
@@ -107,7 +104,7 @@ UserInputService.InputChanged:Connect(function(input)
 end)
 
 ---------------------------------------------------------------------
--- HEADER & ANIMATED TEXT
+-- HEADER & TABS
 ---------------------------------------------------------------------
 local Title = Instance.new("TextLabel", MainFrame)
 Title.Size = UDim2.new(1, -60, 0, 35)
@@ -126,8 +123,7 @@ UIGradient.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(1, Color3.fromRGB(63, 161, 219))
 })
 UIGradient.Offset = Vector2.new(-1, 0)
-local tweenInfo = TweenInfo.new(2, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1)
-TweenService:Create(UIGradient, tweenInfo, {Offset = Vector2.new(1, 0)}):Play()
+TweenService:Create(UIGradient, TweenInfo.new(2, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1), {Offset = Vector2.new(1, 0)}):Play()
 
 local CloseBtn = Instance.new("TextButton", MainFrame)
 CloseBtn.Size = UDim2.new(0, 25, 0, 25)
@@ -139,51 +135,76 @@ CloseBtn.Font = Enum.Font.GothamBold
 CloseBtn.TextSize = 12
 Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 4)
 
-local SubLink = Instance.new("TextLabel", MainFrame)
-SubLink.Size = UDim2.new(1, 0, 0, 15)
-SubLink.Position = UDim2.new(0, 15, 0, 35)
-SubLink.BackgroundTransparency = 1
-SubLink.Text = "discord.gg/vanishhub"
-SubLink.TextColor3 = Color3.fromRGB(120, 120, 120)
-SubLink.TextSize = 12
-SubLink.Font = Enum.Font.Gotham
-SubLink.TextXAlignment = Enum.TextXAlignment.Left
-
----------------------------------------------------------------------
--- TABS & LABELS (NOW FUNCTIONAL TOGGLE)
----------------------------------------------------------------------
 local AutoJoinerTab = Instance.new("TextButton", MainFrame)
-AutoJoinerTab.Size = UDim2.new(1, -30, 0, 35)
-AutoJoinerTab.Position = UDim2.new(0, 15, 0, 65)
-AutoJoinerTab.BackgroundColor3 = Color3.fromRGB(40, 45, 50) -- Default OFF color
+AutoJoinerTab.Size = UDim2.new(1, -30, 0, 30)
+AutoJoinerTab.Position = UDim2.new(0, 15, 0, 55)
+AutoJoinerTab.BackgroundColor3 = Color3.fromRGB(40, 45, 50) 
 AutoJoinerTab.Text = "Auto Join: OFF"
 AutoJoinerTab.TextColor3 = Color3.new(1, 1, 1)
 AutoJoinerTab.Font = Enum.Font.GothamBold
-AutoJoinerTab.TextSize = 14
+AutoJoinerTab.TextSize = 13
 Instance.new("UICorner", AutoJoinerTab).CornerRadius = UDim.new(0, 6)
 
+---------------------------------------------------------------------
+-- JOB ID JOINER SECTION (NEW)
+---------------------------------------------------------------------
+local JobIDBox = Instance.new("TextBox", MainFrame)
+JobIDBox.Size = UDim2.new(0.7, -35, 0, 30)
+JobIDBox.Position = UDim2.new(0, 15, 0, 90)
+JobIDBox.BackgroundColor3 = Color3.fromRGB(15, 18, 22)
+JobIDBox.PlaceholderText = "Paste Job ID..."
+JobIDBox.Text = ""
+JobIDBox.TextColor3 = Color3.new(1, 1, 1)
+JobIDBox.Font = Enum.Font.Gotham
+JobIDBox.TextSize = 12
+JobIDBox.ClipsDescendants = true
+Instance.new("UICorner", JobIDBox).CornerRadius = UDim.new(0, 6)
+
+local ManualJoinBtn = Instance.new("TextButton", MainFrame)
+ManualJoinBtn.Size = UDim2.new(0.3, 0, 0, 30)
+ManualJoinBtn.Position = UDim2.new(0.7, -15, 0, 90)
+ManualJoinBtn.BackgroundColor3 = Color3.fromRGB(63, 161, 219)
+ManualJoinBtn.Text = "JOIN"
+ManualJoinBtn.TextColor3 = Color3.new(1, 1, 1)
+ManualJoinBtn.Font = Enum.Font.GothamBold
+ManualJoinBtn.TextSize = 13
+Instance.new("UICorner", ManualJoinBtn).CornerRadius = UDim.new(0, 6)
+
+ManualJoinBtn.MouseButton1Click:Connect(function()
+    local targetJob = JobIDBox.Text
+    if targetJob ~= "" and #targetJob > 5 then
+        ManualJoinBtn.Text = "..."
+        TeleportService:TeleportToPlaceInstance(PLACE_ID, targetJob, LP)
+        task.wait(2)
+        ManualJoinBtn.Text = "JOIN"
+    end
+end)
+
+---------------------------------------------------------------------
+-- LIST LABELS
+---------------------------------------------------------------------
 local L1 = Instance.new("TextLabel", MainFrame)
 L1.Text = "RARITY"
 L1.TextColor3 = Color3.fromRGB(200, 200, 200)
 L1.Size = UDim2.new(0.5, 0, 0, 20)
-L1.Position = UDim2.new(0, 20, 0, 115)
+L1.Position = UDim2.new(0, 20, 0, 125)
 L1.BackgroundTransparency = 1
 L1.Font = Enum.Font.GothamBold
-L1.TextSize = 12
+L1.TextSize = 11
 L1.TextXAlignment = Enum.TextXAlignment.Left
 
 local L2 = Instance.new("TextLabel", MainFrame)
 L2.Text = "MONEY / GEN"
 L2.TextColor3 = Color3.fromRGB(200, 200, 200)
 L2.Size = UDim2.new(0.5, 0, 0, 20)
-L2.Position = UDim2.new(0.42, 0, 0, 115)
+L2.Position = UDim2.new(0.42, 0, 0, 125)
 L2.BackgroundTransparency = 1
 L2.Font = Enum.Font.GothamBold
-L2.TextSize = 12
+L2.TextSize = 11
 
 local Line = Instance.new("Frame", MainFrame)
 Line.Size = UDim2.new(1, -30, 0, 1)
-Line.Position = UDim2.new(0, 15, 0, 135)
+Line.Position = UDim2.new(0, 15, 0, 145)
 Line.BackgroundColor3 = Color3.fromRGB(40, 45, 50)
 Line.BorderSizePixel = 0
 
@@ -191,11 +212,11 @@ Line.BorderSizePixel = 0
 -- SCROLLING CONTENT
 ---------------------------------------------------------------------
 local Container = Instance.new("ScrollingFrame", MainFrame)
-Container.Size = UDim2.new(1, -30, 1, -200) -- Uses Scale so it shrinks properly
-Container.Position = UDim2.new(0, 15, 0, 145)
+Container.Size = UDim2.new(1, -30, 1, -210) 
+Container.Position = UDim2.new(0, 15, 0, 155)
 Container.BackgroundColor3 = Color3.fromRGB(11, 14, 17)
 Container.BorderSizePixel = 0
-Container.ScrollBarThickness = 3
+Container.ScrollBarThickness = 2
 Container.ScrollBarImageColor3 = Color3.fromRGB(50, 55, 60)
 Container.AutomaticCanvasSize = Enum.AutomaticSize.Y
 
@@ -240,7 +261,10 @@ local function AddServerEntry(jobId, rarity, gen)
     Instance.new("UICorner", Join).CornerRadius = UDim.new(0, 4)
 
     Join.MouseButton1Click:Connect(function()
-        TeleportService:TeleportToPlaceInstance(PLACE_ID, jobId, LP)
+        if not isConnecting then
+            Join.Text = "..."
+            TeleportService:TeleportToPlaceInstance(PLACE_ID, jobId, LP)
+        end
     end)
 end
 
@@ -272,25 +296,25 @@ ClearBtn.TextSize = 13
 Instance.new("UICorner", ClearBtn).CornerRadius = UDim.new(0, 6)
 
 ---------------------------------------------------------------------
--- LOGIC & BUTTON CONNECTIONS
+-- LOGIC & FETCH
 ---------------------------------------------------------------------
 CloseBtn.MouseButton1Click:Connect(function() Shadow.Visible = false end)
 ToggleBtn.MouseButton1Click:Connect(function() Shadow.Visible = not Shadow.Visible end)
 
--- Auto Join Toggle Logic
 AutoJoinerTab.MouseButton1Click:Connect(function()
     AutoJoinEnabled = not AutoJoinEnabled
     if AutoJoinEnabled then
         AutoJoinerTab.Text = "Auto Join: ON"
-        AutoJoinerTab.BackgroundColor3 = Color3.fromRGB(0, 150, 230) -- Turns Blue
+        AutoJoinerTab.BackgroundColor3 = Color3.fromRGB(0, 150, 230) 
     else
         AutoJoinerTab.Text = "Auto Join: OFF"
-        AutoJoinerTab.BackgroundColor3 = Color3.fromRGB(40, 45, 50) -- Turns Grey
+        AutoJoinerTab.BackgroundColor3 = Color3.fromRGB(40, 45, 50) 
     end
 end)
 
 local function Fetch()
-    local ok, res = pcall(function() return game:HttpGet(FETCH_URL) end)
+    local bypassUrl = FETCH_URL .. "?t=" .. tostring(tick())
+    local ok, res = pcall(function() return game:HttpGet(bypassUrl) end)
     if ok then
         local data = HttpService:JSONDecode(res)
         for _, item in pairs(Container:GetChildren()) do
@@ -298,22 +322,22 @@ local function Fetch()
         end
         for _, info in ipairs(data) do
             if not BlacklistedJobs[info.jobId] then
-                
                 local isNewLog = false
-                
-                -- Mark as seen if new
                 if not SeenJobs[info.jobId] then 
                     SeenJobs[info.jobId] = tick() 
                     isNewLog = true
                 end
-                
                 if tick() - SeenJobs[info.jobId] < LOG_LIFESPAN then
                     AddServerEntry(info.jobId, info.rarity, info.gen)
-                    
-                    -- IF AUTO JOIN IS ON & THE LOG IS BRAND NEW -> TELEPORT IMMEDIATELY
-                    if AutoJoinEnabled and isNewLog then
+                    if AutoJoinEnabled and isNewLog and not isConnecting then
+                        isConnecting = true
                         AutoJoinerTab.Text = "JOINING..."
-                        TeleportService:TeleportToPlaceInstance(PLACE_ID, info.jobId, LP)
+                        pcall(function()
+                            TeleportService:TeleportToPlaceInstance(PLACE_ID, info.jobId, LP)
+                        end)
+                        task.wait(3)
+                        isConnecting = false
+                        if AutoJoinEnabled then AutoJoinerTab.Text = "Auto Join: ON" end
                     end
                 end
             end
@@ -322,13 +346,11 @@ local function Fetch()
 end
 
 RefreshBtn.MouseButton1Click:Connect(Fetch)
-
 ClearBtn.MouseButton1Click:Connect(function()
     for job, _ in pairs(SeenJobs) do BlacklistedJobs[job] = true end
     Fetch()
 end)
 
--- AUTO-FETCH (3 Second Interval)
 task.spawn(function()
     while true do
         Fetch()
