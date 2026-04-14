@@ -5,7 +5,7 @@ app.use(express.json());
 let serverCache = [];
 const MAX_CACHE_SIZE = 50;
 
-// Queue system to prevent Plan Overload
+//  prevent Overload
 let requestQueue = [];
 let isProcessing = false;
 
@@ -16,15 +16,15 @@ async function processQueue() {
     while (requestQueue.length > 0) {
         const data = requestQueue.shift();
         
-        // Remove existing data for this server to prevent duplicates
+        // Remove existing data
         serverCache = serverCache.filter(item => item.jobId !== data.jobId);
 
-        // Add the new server batch
+        //  new server batch
         serverCache.unshift({
             jobId: data.jobId,
             plots: data.plots,
             gen: data.maxGen,
-            expiry: Date.now() + 65000 // 65 second lifespan
+            expiry: Date.now() + 65000 // 65 second 
         });
 
         if (serverCache.length > MAX_CACHE_SIZE) serverCache.pop();
