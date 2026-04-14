@@ -1,3 +1,4 @@
+-- open source beccause obfuscator messes up joining job id
 local TeleportService = game:GetService("TeleportService")
 local HttpService = game:GetService("HttpService")
 local UserInputService = game:GetService("UserInputService")
