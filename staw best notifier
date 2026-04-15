@@ -9,7 +9,7 @@ local TargetParent = (gethui and gethui()) or CoreGui
 local FETCH_URL = "https://sav-jn22.onrender.com/list"
 
 -- !!! REPLACE THIS WITH THE 10-12 DIGIT PLACE ID (The one in the website URL) !!!
-local PLACE_ID = 1234567890 
+local PLACE_ID = 104922659387499 
 
 if TargetParent:FindFirstChild("StawAutoJoiner") then TargetParent.StawAutoJoiner:Destroy() end
 
