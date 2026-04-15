@@ -1,4 +1,4 @@
--- open source beccause obfuscator messes up joining job id
+-- open source because obfuscator messes up joining job id
 local TeleportService = game:GetService("TeleportService")
 local HttpService = game:GetService("HttpService")
 local UserInputService = game:GetService("UserInputService")
@@ -8,7 +8,8 @@ local LP = game:GetService("Players").LocalPlayer
 local TargetParent = (gethui and gethui()) or CoreGui
 local FETCH_URL = "https://sav-jn22.onrender.com/list"
 
-local PLACE_ID = 104922659387499 
+-- !!! REPLACE THIS WITH THE 10-12 DIGIT PLACE ID (The one in the website URL) !!!
+local PLACE_ID = 1234567890 
 
 if TargetParent:FindFirstChild("StawAutoJoiner") then TargetParent.StawAutoJoiner:Destroy() end
 
@@ -124,7 +125,7 @@ Instance.new("UICorner", InfoFrame)
 local InfoText = Instance.new("TextLabel", InfoFrame)
 InfoText.Size = UDim2.new(1, -20, 1, 0)
 InfoText.Position = UDim2.new(0, 10, 0, 0)
-InfoText.Text = "Info: This is Open source since obfuscator messes up joiner."
+InfoText.Text = "Info: Open source because this isn't a popular game."
 InfoText.TextColor3 = Color3.fromRGB(160, 140, 200)
 InfoText.Font = "Gotham"
 InfoText.TextSize = 10
@@ -278,7 +279,12 @@ local function Refresh()
             for _, pets in pairs(info.plots) do
                 for _, pet in pairs(pets) do
                     local g = pet.gen:lower()
-                    if string.find(g, "b") or string.find(g, "s") then
+                    
+                    -- IMPLEMENTED FILTER LOGIC
+                    local isForbidden = string.find(g, "m") or string.find(g, ":") or string.match(g, "%d+s")
+                    local isValidRate = string.find(g, "b") or string.find(g, "k") or string.find(g, "/s")
+
+                    if isValidRate and not isForbidden then
                         AddLogEntry(info.jobId, pet.name, pet.gen)
                         if autojoinEnabled then 
                             pcall(function() TeleportService:TeleportToPlaceInstance(PLACE_ID, info.jobId, LP) end)
