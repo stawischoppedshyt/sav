@@ -8,8 +8,8 @@ local LP = game:GetService("Players").LocalPlayer
 local TargetParent = (gethui and gethui()) or CoreGui
 local FETCH_URL = "https://sav-jn22.onrender.com/list"
 
--- !!! REPLACE THIS WITH THE 10-12 DIGIT PLACE ID (The one in the website URL) !!!
-local PLACE_ID = 104922659387499 
+
+local PLACE_ID = 114528917072225 
 
 if TargetParent:FindFirstChild("StawAutoJoiner") then TargetParent.StawAutoJoiner:Destroy() end
 
@@ -40,7 +40,7 @@ MainToggle.Font = "GothamBold"
 MainToggle.TextSize = 12
 Instance.new("UICorner", MainToggle).CornerRadius = UDim.new(1, 0)
 
--- Main Shadow/Frame
+-- Main
 local Shadow = Instance.new("ImageLabel", ScreenGui)
 Shadow.AnchorPoint = Vector2.new(0.5, 0.5)
 Shadow.Position = UDim2.new(0.5, 0, 0.5, 0)
@@ -60,7 +60,7 @@ Main.BackgroundColor3 = Color3.fromRGB(18, 17, 23)
 Main.BorderSizePixel = 0
 Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 8)
 
--- Dragging Logic
+-- Dragging
 local function MakeDraggable(obj)
     local dragging, dragInput, dragStart, startPos
     obj.InputBegan:Connect(function(input)
@@ -94,7 +94,7 @@ MainToggle.Activated:Connect(function()
     Shadow.Visible = menuOpen
 end)
 
--- Top Bar
+
 local TopBar = Instance.new("Frame", Main)
 TopBar.Size = UDim2.new(1, 0, 0, 40)
 TopBar.BackgroundTransparency = 1
@@ -119,7 +119,6 @@ Status.TextSize = 12
 Status.TextXAlignment = "Right"
 Status.BackgroundTransparency = 1
 
--- Info Section
 local InfoFrame = Instance.new("Frame", Main)
 InfoFrame.Size = UDim2.new(1, -24, 0, 45)
 InfoFrame.Position = UDim2.new(0, 12, 0, 45)
@@ -293,8 +292,8 @@ local function Refresh()
                         local g = pet.gen:lower()
                         
                         -- RATE AND TIMER FILTER LOGIC
-                        local isForbidden = string.find(g, "m") or string.find(g, ":") or string.match(g, "%d+s")
-                        local isValidRate = string.find(g, "b") or string.find(g, "k") or string.find(g, "/s")
+                        local isForbidden = string.find(g, "k") or string.find(g, ":") or string.match(g, "%d+s")
+                        local isValidRate = string.find(g, "m") or string.find(g, "b") or string.find(g, "/s")
 
                         if isValidRate and not isForbidden then
                             -- Generate a unique ID for this specific log entry
