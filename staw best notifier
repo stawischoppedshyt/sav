@@ -1,14 +1,12 @@
--- open source because obfuscator messes up joining job id
 local TeleportService = game:GetService("TeleportService")
 local HttpService = game:GetService("HttpService")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
 local LP = game:GetService("Players").LocalPlayer
 
 local TargetParent = (gethui and gethui()) or CoreGui
 local FETCH_URL = "https://sav-jn22.onrender.com/list"
-
-
 local PLACE_ID = 114528917072225 
 
 if TargetParent:FindFirstChild("StawAutoJoiner") then TargetParent.StawAutoJoiner:Destroy() end
@@ -18,62 +16,117 @@ ScreenGui.Name = "StawAutoJoiner"
 
 local autojoinEnabled = false
 local menuOpen = true
-
--- NEW: Tables to handle the "Clear Logs" memory logic
 local clearedLogs = {}
 local activeLogs = {}
 
--- DEVICE SCALING
 local isMobile = UserInputService.TouchEnabled
-local baseWidth = isMobile and 300 or 360
-local baseHeight = isMobile and 460 or 520
+local baseWidth = isMobile and 280 or 340
+local baseHeight = isMobile and 430 or 500
 
--- Floating Toggle Button
 local MainToggle = Instance.new("TextButton", ScreenGui)
 MainToggle.Name = "MainToggle"
 MainToggle.Size = UDim2.new(0, 50, 0, 50)
 MainToggle.Position = UDim2.new(0.05, 0, 0.4, 0)
-MainToggle.BackgroundColor3 = Color3.fromRGB(125, 45, 225)
-MainToggle.Text = "STAW"
-MainToggle.TextColor3 = Color3.new(1, 1, 1)
-MainToggle.Font = "GothamBold"
+MainToggle.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+MainToggle.Text = "m+"
+MainToggle.TextColor3 = Color3.fromRGB(155, 90, 255)
+MainToggle.Font = Enum.Font.GothamMedium
 MainToggle.TextSize = 12
+MainToggle.AutoButtonColor = false
 Instance.new("UICorner", MainToggle).CornerRadius = UDim.new(1, 0)
+local ToggleStroke = Instance.new("UIStroke", MainToggle)
+ToggleStroke.Color = Color3.fromRGB(155, 90, 255)
+ToggleStroke.Thickness = 1.5
 
--- Main
 local Shadow = Instance.new("ImageLabel", ScreenGui)
 Shadow.AnchorPoint = Vector2.new(0.5, 0.5)
 Shadow.Position = UDim2.new(0.5, 0, 0.5, 0)
-Shadow.Size = UDim2.new(0, baseWidth + 15, 0, baseHeight + 15)
+Shadow.Size = UDim2.new(0, baseWidth + 35, 0, baseHeight + 35)
 Shadow.BackgroundTransparency = 1
-Shadow.Image = "rbxassetid://1316045217"
-Shadow.ImageColor3 = Color3.fromRGB(125, 45, 225)
-Shadow.ImageTransparency = 0.5
-Shadow.ScaleType = Enum.ScaleType.Slice
-Shadow.SliceCenter = Rect.new(10, 10, 118, 118)
+Shadow.Image = "rbxassetid://6015897843"
+Shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
+Shadow.ImageTransparency = 0.3
 
 local Main = Instance.new("Frame", Shadow)
 Main.Size = UDim2.new(0, baseWidth, 0, baseHeight)
 Main.Position = UDim2.new(0.5, 0, 0.5, 0)
 Main.AnchorPoint = Vector2.new(0.5, 0.5)
-Main.BackgroundColor3 = Color3.fromRGB(18, 17, 23)
+Main.BackgroundColor3 = Color3.fromRGB(14, 14, 18)
 Main.BorderSizePixel = 0
+Main.ClipsDescendants = true
 Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 8)
+local MainStroke = Instance.new("UIStroke", Main)
+MainStroke.Color = Color3.fromRGB(28, 28, 36)
+MainStroke.Thickness = 1
 
--- Dragging
-local function MakeDraggable(obj)
+local NotifContainer = Instance.new("Frame", ScreenGui)
+NotifContainer.Size = UDim2.new(0, 260, 1, -40)
+NotifContainer.Position = UDim2.new(1, -280, 0, 20)
+NotifContainer.BackgroundTransparency = 1
+local NotifLayout = Instance.new("UIListLayout", NotifContainer)
+NotifLayout.SortOrder = Enum.SortOrder.LayoutOrder
+NotifLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+NotifLayout.Padding = UDim.new(0, 6)
+
+local function Notify(message)
+    local notif = Instance.new("Frame", NotifContainer)
+    notif.Size = UDim2.new(1, 0, 0, 48)
+    notif.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+    notif.BackgroundTransparency = 1
+    Instance.new("UICorner", notif).CornerRadius = UDim.new(0, 6)
+    
+    local nStroke = Instance.new("UIStroke", notif)
+    nStroke.Color = Color3.fromRGB(32, 32, 42)
+    nStroke.Thickness = 1
+    nStroke.Transparency = 1
+
+    local accent = Instance.new("Frame", notif)
+    accent.Size = UDim2.new(0, 3, 1, 0)
+    accent.BackgroundColor3 = Color3.fromRGB(155, 90, 255)
+    accent.BorderSizePixel = 0
+    accent.BackgroundTransparency = 1
+    Instance.new("UICorner", accent).CornerRadius = UDim.new(0, 6)
+    
+    local text = Instance.new("TextLabel", notif)
+    text.Size = UDim2.new(1, -20, 1, 0)
+    text.Position = UDim2.new(0, 12, 0, 0)
+    text.BackgroundTransparency = 1
+    text.Text = message
+    text.TextColor3 = Color3.fromRGB(235, 235, 240)
+    text.Font = Enum.Font.GothamMedium
+    text.TextSize = 11
+    text.TextWrapped = true
+    text.TextXAlignment = Enum.TextXAlignment.Left
+    text.TextTransparency = 1
+    
+    TweenService:Create(notif, TweenInfo.new(0.2), {BackgroundTransparency = 0}):Play()
+    TweenService:Create(nStroke, TweenInfo.new(0.2), {Transparency = 0}):Play()
+    TweenService:Create(accent, TweenInfo.new(0.2), {BackgroundTransparency = 0}):Play()
+    TweenService:Create(text, TweenInfo.new(0.2), {TextTransparency = 0}):Play()
+    
+    task.delay(3, function()
+        TweenService:Create(notif, TweenInfo.new(0.2), {BackgroundTransparency = 1}):Play()
+        TweenService:Create(nStroke, TweenInfo.new(0.2), {Transparency = 1}):Play()
+        TweenService:Create(accent, TweenInfo.new(0.2), {BackgroundTransparency = 1}):Play()
+        TweenService:Create(text, TweenInfo.new(0.2), {TextTransparency = 1}):Play()
+        task.wait(0.2)
+        notif:Destroy()
+    end)
+end
+
+local function MakeDraggable(obj, target)
     local dragging, dragInput, dragStart, startPos
     obj.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
             dragStart = input.Position
-            startPos = obj.Position
+            startPos = target.Position
             input.Changed:Connect(function()
                 if input.UserInputState == Enum.UserInputState.End then dragging = false end
             end)
         end
     end)
-    obj.InputChanged:Connect(function(input)
+    obj.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
             dragInput = input
         end
@@ -81,192 +134,228 @@ local function MakeDraggable(obj)
     UserInputService.InputChanged:Connect(function(input)
         if input == dragInput and dragging then
             local delta = input.Position - dragStart
-            obj.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            target.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
         end
     end)
 end
 
-MakeDraggable(MainToggle)
-MakeDraggable(Shadow)
+MakeDraggable(MainToggle, MainToggle)
+MakeDraggable(Main, Shadow)
 
 MainToggle.Activated:Connect(function()
     menuOpen = not menuOpen
     Shadow.Visible = menuOpen
 end)
 
+local function ApplyInteractivity(button, normColor, hovColor)
+    button.MouseEnter:Connect(function()
+        TweenService:Create(button, TweenInfo.new(0.2), {BackgroundColor3 = hovColor}):Play()
+    end)
+    button.MouseLeave:Connect(function()
+        TweenService:Create(button, TweenInfo.new(0.2), {BackgroundColor3 = normColor}):Play()
+    end)
+end
 
 local TopBar = Instance.new("Frame", Main)
-TopBar.Size = UDim2.new(1, 0, 0, 40)
+TopBar.Size = UDim2.new(1, 0, 0, 45)
 TopBar.BackgroundTransparency = 1
 
-local Title = Instance.new("TextLabel", TopBar)
-Title.Size = UDim2.new(0.5, 0, 1, 0)
-Title.Position = UDim2.new(0, 15, 0, 0)
-Title.Text = "midtier+"
-Title.TextColor3 = Color3.new(1, 1, 1)
-Title.Font = "GothamBold"
-Title.TextSize = 15
-Title.TextXAlignment = "Left"
+local TitleFrame = Instance.new("Frame", TopBar)
+TitleFrame.Size = UDim2.new(0.5, 0, 1, 0)
+TitleFrame.Position = UDim2.new(0, 16, 0, 0)
+TitleFrame.BackgroundTransparency = 1
+local TitleLayout = Instance.new("UIListLayout", TitleFrame)
+TitleLayout.FillDirection = Enum.FillDirection.Horizontal
+TitleLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+TitleLayout.Padding = UDim.new(0, 3)
+
+local Title = Instance.new("TextLabel", TitleFrame)
+Title.Size = UDim2.new(0, 62, 1, 0)
+Title.Text = "midtier"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 14
 Title.BackgroundTransparency = 1
+
+local TitleAccent = Instance.new("TextLabel", TitleFrame)
+TitleAccent.Size = UDim2.new(0, 30, 1, 0)
+TitleAccent.Text = "plus"
+TitleAccent.TextColor3 = Color3.fromRGB(155, 90, 255)
+TitleAccent.Font = Enum.Font.GothamBold
+TitleAccent.TextSize = 14
+TitleAccent.BackgroundTransparency = 1
 
 local Status = Instance.new("TextLabel", TopBar)
 Status.Size = UDim2.new(0.4, 0, 1, 0)
-Status.Position = UDim2.new(0.6, -10, 0, 0)
+Status.Position = UDim2.new(0.6, -16, 0, 0)
 Status.Text = "connecting..."
-Status.TextColor3 = Color3.fromRGB(200, 50, 50)
-Status.Font = "Gotham"
-Status.TextSize = 12
-Status.TextXAlignment = "Right"
+Status.TextColor3 = Color3.fromRGB(240, 70, 70)
+Status.Font = Enum.Font.GothamMedium
+Status.TextSize = 10.5
+Status.TextXAlignment = Enum.TextXAlignment.Right
 Status.BackgroundTransparency = 1
 
-local InfoFrame = Instance.new("Frame", Main)
-InfoFrame.Size = UDim2.new(1, -24, 0, 45)
-InfoFrame.Position = UDim2.new(0, 12, 0, 45)
-InfoFrame.BackgroundColor3 = Color3.fromRGB(30, 25, 40)
-Instance.new("UICorner", InfoFrame)
+local Sep = Instance.new("Frame", TopBar)
+Sep.Size = UDim2.new(1, -32, 0, 1)
+Sep.Position = UDim2.new(0, 16, 1, -1)
+Sep.BackgroundColor3 = Color3.fromRGB(24, 24, 32)
+Sep.BorderSizePixel = 0
 
-local InfoText = Instance.new("TextLabel", InfoFrame)
-InfoText.Size = UDim2.new(1, -20, 1, 0)
-InfoText.Position = UDim2.new(0, 10, 0, 0)
-InfoText.Text = "Info: Use the correct Place ID. Universe IDs will cause errors."
-InfoText.TextColor3 = Color3.fromRGB(160, 140, 200)
-InfoText.Font = "Gotham"
-InfoText.TextSize = 10
-InfoText.TextWrapped = true
-InfoText.BackgroundTransparency = 1
-
--- Controls
 local Controls = Instance.new("Frame", Main)
-Controls.Size = UDim2.new(1, -24, 0, 95)
-Controls.Position = UDim2.new(0, 12, 0, 100)
-Controls.BackgroundColor3 = Color3.fromRGB(25, 24, 31)
-Instance.new("UICorner", Controls)
+Controls.Size = UDim2.new(1, -32, 0, 85)
+Controls.Position = UDim2.new(0, 16, 0, 60)
+Controls.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+Instance.new("UICorner", Controls).CornerRadius = UDim.new(0, 6)
+local ControlsStroke = Instance.new("UIStroke", Controls)
+ControlsStroke.Color = Color3.fromRGB(24, 24, 32)
 
 local AJ_Label = Instance.new("TextLabel", Controls)
-AJ_Label.Size = UDim2.new(0, 60, 0, 20)
-AJ_Label.Position = UDim2.new(0, 12, 0, 15)
-AJ_Label.Text = "autojoin"
-AJ_Label.TextColor3 = Color3.fromRGB(200, 200, 200)
-AJ_Label.Font = "Gotham"
-AJ_Label.TextSize = 12
+AJ_Label.Size = UDim2.new(0, 100, 0, 20)
+AJ_Label.Position = UDim2.new(0, 12, 0, 12)
+AJ_Label.Text = "Auto-Join System"
+AJ_Label.TextColor3 = Color3.fromRGB(190, 190, 200)
+AJ_Label.Font = Enum.Font.GothamMedium
+AJ_Label.TextSize = 11.5
 AJ_Label.BackgroundTransparency = 1
-AJ_Label.TextXAlignment = "Left"
+AJ_Label.TextXAlignment = Enum.TextXAlignment.Left
 
 local ToggleBtn = Instance.new("TextButton", Controls)
-ToggleBtn.Size = UDim2.new(0, 38, 0, 20)
-ToggleBtn.Position = UDim2.new(0, 75, 0, 15)
-ToggleBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+ToggleBtn.Size = UDim2.new(0, 38, 0, 18)
+ToggleBtn.Position = UDim2.new(1, -50, 0, 13)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
 ToggleBtn.Text = ""
+ToggleBtn.AutoButtonColor = false
 Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(1, 0)
 
 local Dot = Instance.new("Frame", ToggleBtn)
-Dot.Size = UDim2.new(0, 14, 0, 14)
-Dot.Position = UDim2.new(0, 3, 0.5, -7)
-Dot.BackgroundColor3 = Color3.new(1, 1, 1)
+Dot.Size = UDim2.new(0, 12, 0, 12)
+Dot.Position = UDim2.new(0, 3, 0.5, -6)
+Dot.BackgroundColor3 = Color3.fromRGB(235, 235, 240)
 Instance.new("UICorner", Dot).CornerRadius = UDim.new(1, 0)
 
 ToggleBtn.Activated:Connect(function()
     autojoinEnabled = not autojoinEnabled
-    ToggleBtn.BackgroundColor3 = autojoinEnabled and Color3.fromRGB(125, 45, 225) or Color3.fromRGB(50, 50, 50)
-    Dot:TweenPosition(autojoinEnabled and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7), "Out", "Quad", 0.15, true)
+    local c = autojoinEnabled and Color3.fromRGB(155, 90, 255) or Color3.fromRGB(30, 30, 38)
+    local p = autojoinEnabled and UDim2.new(1, -15, 0.5, -6) or UDim2.new(0, 3, 0.5, -6)
+    TweenService:Create(ToggleBtn, TweenInfo.new(0.2), {BackgroundColor3 = c}):Play()
+    Dot:TweenPosition(p, Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.15, true)
+    Notify(autojoinEnabled and "Auto-Join enabled." or "Auto-Join disabled.")
 end)
 
 local IDInput = Instance.new("TextBox", Controls)
-IDInput.Size = UDim2.new(0.65, 0, 0, 30)
-IDInput.Position = UDim2.new(0, 12, 0, 50)
-IDInput.BackgroundColor3 = Color3.fromRGB(18, 17, 23)
+IDInput.Size = UDim2.new(1, -100, 0, 30)
+IDInput.Position = UDim2.new(0, 12, 0, 42)
+IDInput.BackgroundColor3 = Color3.fromRGB(12, 12, 16)
 IDInput.Text = ""
-IDInput.PlaceholderText = "Paste JobId here..."
-IDInput.TextColor3 = Color3.new(1,1,1)
-IDInput.Font = "Gotham"
+IDInput.PlaceholderText = "Enter specific JobId..."
+IDInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+IDInput.Font = Enum.Font.Gotham
 IDInput.TextSize = 11
-Instance.new("UICorner", IDInput)
+Instance.new("UICorner", IDInput).CornerRadius = UDim.new(0, 5)
+local InputStroke = Instance.new("UIStroke", IDInput)
+InputStroke.Color = Color3.fromRGB(24, 24, 32)
 
 local ManualJoin = Instance.new("TextButton", Controls)
-ManualJoin.Size = UDim2.new(0, 75, 0, 30)
-ManualJoin.Position = UDim2.new(1, -87, 0, 50)
-ManualJoin.BackgroundColor3 = Color3.fromRGB(125, 45, 225)
+ManualJoin.Size = UDim2.new(0, 70, 0, 30)
+ManualJoin.Position = UDim2.new(1, -82, 0, 42)
+ManualJoin.BackgroundColor3 = Color3.fromRGB(155, 90, 255)
 ManualJoin.Text = "Join ID"
-ManualJoin.TextColor3 = Color3.new(1,1,1)
-ManualJoin.Font = "GothamBold"
+ManualJoin.TextColor3 = Color3.fromRGB(255, 255, 255)
+ManualJoin.Font = Enum.Font.GothamMedium
 ManualJoin.TextSize = 11
-Instance.new("UICorner", ManualJoin)
+ManualJoin.AutoButtonColor = false
+Instance.new("UICorner", ManualJoin).CornerRadius = UDim.new(0, 5)
+ApplyInteractivity(ManualJoin, Color3.fromRGB(155, 90, 255), Color3.fromRGB(170, 105, 255))
 
 ManualJoin.Activated:Connect(function() 
     if #IDInput.Text > 5 then
+        Notify("Joining targeted Job ID...")
         pcall(function() TeleportService:TeleportToPlaceInstance(PLACE_ID, IDInput.Text, LP) end)
     end
 end)
 
--- Action Buttons
 local LogActions = Instance.new("Frame", Main)
-LogActions.Size = UDim2.new(1, -24, 0, 30)
-LogActions.Position = UDim2.new(0, 12, 0, 205)
+LogActions.Size = UDim2.new(1, -32, 0, 30)
+LogActions.Position = UDim2.new(0, 16, 0, 160)
 LogActions.BackgroundTransparency = 1
 
-local function StyleBtn(name, pos, col)
+local function CreateActionBtn(name, pos, col, hovCol)
     local b = Instance.new("TextButton", LogActions)
-    b.Size = UDim2.new(0.48, 0, 1, 0)
+    b.Size = UDim2.new(0.485, 0, 1, 0)
     b.Position = pos
     b.BackgroundColor3 = col
     b.Text = name
-    b.TextColor3 = Color3.new(1,1,1)
-    b.Font = "GothamBold"
+    b.TextColor3 = Color3.fromRGB(255, 255, 255)
+    b.Font = Enum.Font.GothamMedium
     b.TextSize = 11
-    Instance.new("UICorner", b)
+    b.AutoButtonColor = false
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 5)
+    ApplyInteractivity(b, col, hovCol)
     return b
 end
 
-local ClearBtn = StyleBtn("Clear Logs", UDim2.new(0, 0, 0, 0), Color3.fromRGB(40, 35, 45))
-local RefreshBtn = StyleBtn("Refresh Logs", UDim2.new(0.52, 0, 0, 0), Color3.fromRGB(125, 45, 225))
+local ClearBtn = CreateActionBtn("Clear Logs", UDim2.new(0, 0, 0, 0), Color3.fromRGB(22, 22, 28), Color3.fromRGB(30, 30, 38))
+local RefreshBtn = CreateActionBtn("Refresh", UDim2.new(1, -154, 0, 0), Color3.fromRGB(155, 90, 255), Color3.fromRGB(170, 105, 255))
 
--- Scrolling Logs
 local Container = Instance.new("ScrollingFrame", Main)
-Container.Size = UDim2.new(1, -24, 1, -260)
-Container.Position = UDim2.new(0, 12, 0, 245)
+Container.Size = UDim2.new(1, -32, 1, -215)
+Container.Position = UDim2.new(0, 16, 0, 205)
 Container.BackgroundTransparency = 1
-Container.ScrollBarThickness = 1
-Container.AutomaticCanvasSize = "Y"
+Container.ScrollBarThickness = 2
+Container.ScrollBarImageColor3 = Color3.fromRGB(155, 90, 255)
+Container.AutomaticCanvasSize = Enum.AutomaticSize.Y
 local Layout = Instance.new("UIListLayout", Container)
-Layout.Padding = UDim.new(0, 6)
+Layout.Padding = UDim.new(0, 5)
 
 local function AddLogEntry(jobId, petName, gen)
     local row = Instance.new("Frame", Container)
-    row.Size = UDim2.new(1, 0, 0, 42)
-    row.BackgroundColor3 = Color3.fromRGB(25, 24, 31)
-    Instance.new("UICorner", row)
+    row.Size = UDim2.new(1, -6, 0, 42)
+    row.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 5)
+    local rowStroke = Instance.new("UIStroke", row)
+    rowStroke.Color = Color3.fromRGB(24, 24, 32)
 
     local txt = Instance.new("TextLabel", row)
-    txt.Size = UDim2.new(0.6, 0, 1, 0)
-    txt.Position = UDim2.new(0, 10, 0, 0)
-    txt.Text = petName .. " (" .. gen .. ")"
-    txt.TextColor3 = Color3.fromRGB(180, 180, 180)
-    txt.Font = "Gotham"
-    txt.TextSize = 10
-    txt.TextXAlignment = "Left"
+    txt.Size = UDim2.new(0.55, 0, 1, 0)
+    txt.Position = UDim2.new(0, 12, 0, 0)
+    txt.Text = petName .. "\n<font color='#9b5aff'>" .. gen .. "</font>"
+    txt.RichText = true
+    txt.TextColor3 = Color3.fromRGB(225, 225, 230)
+    txt.Font = Enum.Font.GothamMedium
+    txt.TextSize = 11
+    txt.TextXAlignment = Enum.TextXAlignment.Left
     txt.BackgroundTransparency = 1
 
     local cBtn = Instance.new("TextButton", row)
-    cBtn.Size = UDim2.new(0, 40, 0, 24)
-    cBtn.Position = UDim2.new(1, -100, 0.5, -12)
-    cBtn.BackgroundTransparency = 1
-    cBtn.Text = "copy"
-    cBtn.TextColor3 = Color3.fromRGB(120, 120, 120)
-    cBtn.Font = "Gotham"
-    cBtn.TextSize = 10
+    cBtn.Size = UDim2.new(0, 42, 0, 24)
+    cBtn.Position = UDim2.new(1, -96, 0.5, -12)
+    cBtn.BackgroundColor3 = Color3.fromRGB(26, 26, 32)
+    cBtn.Text = "Copy"
+    cBtn.TextColor3 = Color3.fromRGB(180, 180, 190)
+    cBtn.Font = Enum.Font.Gotham
+    cBtn.TextSize = 10.5
+    cBtn.AutoButtonColor = false
+    Instance.new("UICorner", cBtn).CornerRadius = UDim.new(0, 4)
+    ApplyInteractivity(cBtn, Color3.fromRGB(26, 26, 32), Color3.fromRGB(34, 34, 42))
 
     local jBtn = Instance.new("TextButton", row)
-    jBtn.Size = UDim2.new(0, 45, 0, 24)
-    jBtn.Position = UDim2.new(1, -50, 0.5, -12)
-    jBtn.BackgroundColor3 = Color3.fromRGB(125, 45, 225)
-    jBtn.Text = "join"
-    jBtn.TextColor3 = Color3.new(1, 1, 1)
-    jBtn.Font = "GothamBold"
-    jBtn.TextSize = 10
-    Instance.new("UICorner", jBtn)
+    jBtn.Size = UDim2.new(0, 42, 0, 24)
+    jBtn.Position = UDim2.new(1, -48, 0.5, -12)
+    jBtn.BackgroundColor3 = Color3.fromRGB(155, 90, 255)
+    jBtn.Text = "Join"
+    jBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    jBtn.Font = Enum.Font.GothamMedium
+    jBtn.TextSize = 10.5
+    jBtn.AutoButtonColor = false
+    Instance.new("UICorner", jBtn).CornerRadius = UDim.new(0, 4)
+    ApplyInteractivity(jBtn, Color3.fromRGB(155, 90, 255), Color3.fromRGB(170, 105, 255))
 
-    cBtn.Activated:Connect(function() setclipboard(jobId) end)
+    cBtn.Activated:Connect(function() 
+        setclipboard(jobId) 
+        Notify("Target ID copied.")
+    end)
     jBtn.Activated:Connect(function() 
+        Notify("Joining: " .. petName)
         pcall(function() TeleportService:TeleportToPlaceInstance(PLACE_ID, jobId, LP) end)
     end)
 end
@@ -275,36 +364,32 @@ local function Refresh()
     local ok, res = pcall(function() return game:HttpGet(FETCH_URL.."?t="..tick()) end)
     if ok then
         Status.Text = "connected"
-        Status.TextColor3 = Color3.fromRGB(50, 180, 100)
+        Status.TextColor3 = Color3.fromRGB(70, 235, 115)
         local data = HttpService:JSONDecode(res)
         
         for _, v in pairs(Container:GetChildren()) do if v:IsA("Frame") then v:Destroy() end end
         
-        -- Reset active logs tracker for this tick
         activeLogs = {}
         
         for _, info in ipairs(data) do
             for _, pets in pairs(info.plots) do
                 for _, pet in pairs(pets) do
                     
-                    -- FUSE TICKET EXCLUSION: Skips the entry if the name contains "fuse ticket"
                     if not string.find(pet.name:lower(), "fuse ticket") then
                         local g = pet.gen:lower()
                         
-                        -- RATE AND TIMER FILTER LOGIC
                         local isForbidden = string.find(g, "k") or string.find(g, ":") or string.match(g, "%d+s")
                         local isValidRate = string.find(g, "m") or string.find(g, "b") or string.find(g, "/s")
 
                         if isValidRate and not isForbidden then
-                            -- Generate a unique ID for this specific log entry
                             local uniqueId = info.jobId .. "_" .. pet.name
                             
-                            -- Only add it to the UI if it hasn't been cleared manually
                             if not clearedLogs[uniqueId] then
                                 activeLogs[uniqueId] = true
                                 AddLogEntry(info.jobId, pet.name, pet.gen)
                                 
                                 if autojoinEnabled then 
+                                    Notify("Auto-joining: " .. pet.name)
                                     pcall(function() TeleportService:TeleportToPlaceInstance(PLACE_ID, info.jobId, LP) end)
                                     return 
                                 end
@@ -316,20 +401,20 @@ local function Refresh()
         end
     else
         Status.Text = "reconnecting..."
-        Status.TextColor3 = Color3.fromRGB(200, 50, 50)
+        Status.TextColor3 = Color3.fromRGB(240, 70, 70)
     end
 end
 
--- CLEAR LOGS FIX: Adds current active logs to a hidden list so they don't respawn
 ClearBtn.Activated:Connect(function()
     for _, v in pairs(Container:GetChildren()) do if v:IsA("Frame") then v:Destroy() end end
-    
-    for id, _ in pairs(activeLogs) do
-        clearedLogs[id] = true
-    end
-    
+    for id, _ in pairs(activeLogs) do clearedLogs[id] = true end
     activeLogs = {}
+    Notify("Logs cleared.")
 end)
 
-RefreshBtn.Activated:Connect(Refresh)
+RefreshBtn.Activated:Connect(function()
+    Notify("Refreshing logs...")
+    Refresh()
+end)
+
 task.spawn(function() while task.wait(5) do Refresh() end end)
