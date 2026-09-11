@@ -9,6 +9,9 @@ local Players = game:GetService("Players")
 local LP = Players.LocalPlayer
 local TargetParent = (gethui and gethui()) or CoreGui
 
+if TargetParent:FindFirstChild("MidTierLumenGui") then
+    TargetParent.MidTierLumenGui:Destroy()
+end
 if TargetParent:FindFirstChild("MidTierPlusGui") then
     TargetParent.MidTierPlusGui:Destroy()
 end
@@ -17,13 +20,15 @@ if TargetParent:FindFirstChild("StawAutoJoiner") then
 end
 
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "MidTierPlusGui"
+ScreenGui.Name = "MidTierLumenGui"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = TargetParent
 
 local FETCH_URL = "https://sav-jn22.onrender.com/list"
 local PLACE_ID = 114528917072225
+local SAVE_DIR = "MidTierPlus"
+local SAVE_FILE = SAVE_DIR .. "/blacklist.json"
 
 local state = {
     autojoin = false,
@@ -32,27 +37,86 @@ local state = {
     rawLogs = {},
     clearedLogs = {},
     joinedJobs = {},
-    isOpen = true
+    blacklistEnabled = true,
+    blacklist = {
+        "la grande",
+        "fuse ticket"
+    },
+    blockedCount = 0
 }
 
+local function saveBlacklist()
+    pcall(function()
+        if not isfolder(SAVE_DIR) then makefolder(SAVE_DIR) end
+        local encoded = HttpService:JSONEncode(state.blacklist)
+        writefile(SAVE_FILE, encoded)
+    end)
+end
+
+local function loadBlacklist()
+    local success, content = pcall(function()
+        if isfile(SAVE_FILE) then
+            return readfile(SAVE_FILE)
+        end
+    end)
+    if success and content then
+        local decodeOk, data = pcall(function() return HttpService:JSONDecode(content) end)
+        if decodeOk and type(data) == "table" then
+            state.blacklist = data
+        end
+    end
+end
+
+loadBlacklist()
+
 local THEME = {
-    Bg = Color3.fromRGB(15, 20, 32),
-    Container = Color3.fromRGB(20, 27, 43),
-    Card = Color3.fromRGB(20, 27, 43),
-    CardBorder = Color3.fromRGB(32, 42, 64),
-    Border = Color3.fromRGB(32, 42, 64),
-    AccentPurple = Color3.fromRGB(139, 92, 246),
-    AccentPurpleHover = Color3.fromRGB(167, 115, 255),
-    BadgeBg = Color3.fromRGB(46, 27, 91),
-    BadgeText = Color3.fromRGB(192, 132, 252),
-    BtnDark = Color3.fromRGB(28, 36, 56),
-    BtnDarkHover = Color3.fromRGB(36, 46, 72),
-    TextWhite = Color3.fromRGB(255, 255, 255),
-    TextMuted = Color3.fromRGB(148, 163, 184),
-    Green = Color3.fromRGB(34, 197, 94),
-    Red = Color3.fromRGB(239, 68, 68),
-    Gold = Color3.fromRGB(245, 158, 11)
+    Bg = Color3.fromRGB(11, 13, 18),
+    Panel = Color3.fromRGB(16, 19, 27),
+    PanelGrad = Color3.fromRGB(22, 26, 36),
+    Card = Color3.fromRGB(18, 22, 30),
+    CardGrad = Color3.fromRGB(26, 31, 44),
+    CardOG = Color3.fromRGB(34, 28, 14),
+    Stroke = Color3.fromRGB(30, 36, 50),
+    StrokeHover = Color3.fromRGB(65, 78, 108),
+    Text = Color3.fromRGB(255, 255, 255),
+    Muted = Color3.fromRGB(140, 150, 172),
+    Green = Color3.fromRGB(46, 230, 113),
+    Red = Color3.fromRGB(240, 75, 75),
+    Gold = Color3.fromRGB(250, 190, 45),
+    BtnGrad1 = Color3.fromRGB(26, 31, 44),
+    JoinBtn1 = Color3.fromRGB(255, 255, 255)
 }
+
+local FONT_FAMILY = Enum.Font.GothamMedium
+local FONT_BOLD = Enum.Font.GothamBold
+local FONT_REGULAR = Enum.Font.Gotham
+
+local function playSound(soundType)
+    task.spawn(function()
+        local s = Instance.new("Sound")
+        s.Volume = 0.35
+        if soundType == "hover" then
+            s.SoundId = "rbxassetid://6895079853"
+            s.PlaybackSpeed = 1.8
+            s.Volume = 0.15
+        elseif soundType == "click" then
+            s.SoundId = "rbxassetid://6895079853"
+            s.PlaybackSpeed = 1.2
+            s.Volume = 0.35
+        elseif soundType == "join" then
+            s.SoundId = "rbxassetid://9069609268"
+            s.PlaybackSpeed = 1.1
+            s.Volume = 0.55
+        elseif soundType == "og" then
+            s.SoundId = "rbxassetid://5153734608"
+            s.PlaybackSpeed = 1.15
+            s.Volume = 0.7
+        end
+        s.Parent = ScreenGui
+        s:Play()
+        s.Ended:Connect(function() s:Destroy() end)
+    end)
+end
 
 local function parseGenValue(str)
     if not str then return 0 end
@@ -72,41 +136,157 @@ local function isOG(name, rarity)
     return n:find("og") ~= nil or r:find("og") ~= nil
 end
 
--- Drop Shadow
+local function isBlacklisted(petName)
+    if not state.blacklistEnabled then return false end
+    local lower = tostring(petName or ""):lower()
+    for _, term in ipairs(state.blacklist) do
+        if term ~= "" and lower:find(term:lower(), 1, true) then
+            return true
+        end
+    end
+    return false
+end
+
+local function styleButton(btn, stroke, normalCol, hoverCol)
+    local baseCol = normalCol or THEME.Panel
+    local hovCol = hoverCol or THEME.CardGrad
+
+    btn.MouseEnter:Connect(function()
+        playSound("hover")
+        TweenService:Create(btn, TweenInfo.new(0.12), {
+            BackgroundColor3 = hovCol
+        }):Play()
+        if stroke then
+            TweenService:Create(stroke, TweenInfo.new(0.12), {
+                Color = THEME.StrokeHover
+            }):Play()
+        end
+    end)
+
+    btn.MouseLeave:Connect(function()
+        TweenService:Create(btn, TweenInfo.new(0.12), {
+            BackgroundColor3 = baseCol
+        }):Play()
+        if stroke then
+            TweenService:Create(stroke, TweenInfo.new(0.12), {
+                Color = THEME.Stroke
+            }):Play()
+        end
+    end)
+
+    btn.MouseButton1Down:Connect(function()
+        playSound("click")
+        TweenService:Create(btn, TweenInfo.new(0.06), {
+            BackgroundTransparency = 0.25
+        }):Play()
+    end)
+
+    btn.MouseButton1Up:Connect(function()
+        TweenService:Create(btn, TweenInfo.new(0.1), {
+            BackgroundTransparency = 0
+        }):Play()
+    end)
+end
+
+local function createSwitch(parent, size, defaultOn, onToggled)
+    local switchBtn = Instance.new("TextButton")
+    switchBtn.Size = size or UDim2.new(0, 36, 0, 18)
+    switchBtn.BackgroundColor3 = defaultOn and THEME.Green or Color3.fromRGB(24, 28, 38)
+    switchBtn.Text = ""
+    switchBtn.AutoButtonColor = false
+    switchBtn.Parent = parent
+
+    local switchCorner = Instance.new("UICorner")
+    switchCorner.CornerRadius = UDim.new(1, 0)
+    switchCorner.Parent = switchBtn
+
+    local switchStroke = Instance.new("UIStroke")
+    switchStroke.Color = defaultOn and THEME.Green or THEME.Stroke
+    switchStroke.Thickness = 1
+    switchStroke.Parent = switchBtn
+
+    local circleH = switchBtn.Size.Y.Offset - 4
+    local circle = Instance.new("Frame")
+    circle.Size = UDim2.new(0, circleH, 0, circleH)
+    circle.Position = defaultOn and UDim2.new(1, -circleH - 2, 0.5, -circleH/2) or UDim2.new(0, 2, 0.5, -circleH/2)
+    circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    circle.BorderSizePixel = 0
+    circle.Parent = switchBtn
+
+    local circleCorner = Instance.new("UICorner")
+    circleCorner.CornerRadius = UDim.new(1, 0)
+    circleCorner.Parent = circle
+
+    local isOn = defaultOn
+    switchBtn.MouseButton1Click:Connect(function()
+        isOn = not isOn
+        playSound("click")
+        if isOn then
+            TweenService:Create(switchBtn, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                BackgroundColor3 = THEME.Green
+            }):Play()
+            TweenService:Create(switchStroke, TweenInfo.new(0.18), { Color = THEME.Green }):Play()
+            TweenService:Create(circle, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                Position = UDim2.new(1, -circleH - 2, 0.5, -circleH/2)
+            }):Play()
+        else
+            TweenService:Create(switchBtn, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                BackgroundColor3 = Color3.fromRGB(24, 28, 38)
+            }):Play()
+            TweenService:Create(switchStroke, TweenInfo.new(0.18), { Color = THEME.Stroke }):Play()
+            TweenService:Create(circle, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                Position = UDim2.new(0, 2, 0.5, -circleH/2)
+            }):Play()
+        end
+        if onToggled then onToggled(isOn) end
+    end)
+
+    return switchBtn
+end
+
+-- Ambient Drop Shadow
 local Shadow = Instance.new("ImageLabel")
 Shadow.Name = "Shadow"
 Shadow.AnchorPoint = Vector2.new(0.5, 0.5)
 Shadow.Position = UDim2.new(0.5, 0, 0.5, 0)
-Shadow.Size = UDim2.new(0, 350, 0, 490)
+Shadow.Size = UDim2.new(0, 520, 0, 440)
 Shadow.BackgroundTransparency = 1
 Shadow.Image = "rbxassetid://6015897843"
 Shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
-Shadow.ImageTransparency = 0.35
+Shadow.ImageTransparency = 0.4
 Shadow.ScaleType = Enum.ScaleType.Slice
 Shadow.SliceCenter = Rect.new(49, 49, 450, 450)
 Shadow.Parent = ScreenGui
 
--- Main Container Frame
+-- Main Container Frame (490x410)
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-MainFrame.Size = UDim2.new(0, 320, 0, 460)
+MainFrame.Size = UDim2.new(0, 490, 0, 410)
 MainFrame.BackgroundColor3 = THEME.Bg
 MainFrame.BorderSizePixel = 0
 MainFrame.ClipsDescendants = true
 MainFrame.Parent = ScreenGui
 
 local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0, 12)
+MainCorner.CornerRadius = UDim.new(0, 10)
 MainCorner.Parent = MainFrame
 
 local MainStroke = Instance.new("UIStroke")
-MainStroke.Color = THEME.Border
+MainStroke.Color = THEME.Stroke
 MainStroke.Thickness = 1.2
 MainStroke.Parent = MainFrame
 
--- Physics-based Lerped Dragging
+local MainBgGrad = Instance.new("UIGradient")
+MainBgGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(16, 20, 28)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(10, 12, 16))
+})
+MainBgGrad.Rotation = 45
+MainBgGrad.Parent = MainFrame
+
+-- Smooth Lerped Dragging
 local dragging, dragStart, startPos = false, nil, nil
 local targetPos = MainFrame.Position
 
@@ -143,155 +323,176 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- Header
-local Header = Instance.new("Frame")
-Header.Name = "Header"
-Header.Size = UDim2.new(1, -24, 0, 36)
-Header.Position = UDim2.new(0, 12, 0, 8)
-Header.BackgroundTransparency = 1
-Header.Parent = MainFrame
+-- Topbar
+local Topbar = Instance.new("Frame")
+Topbar.Name = "Topbar"
+Topbar.Size = UDim2.new(1, 0, 0, 38)
+Topbar.BackgroundTransparency = 1
+Topbar.Parent = MainFrame
 
 local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Size = UDim2.new(0, 160, 1, 0)
-TitleLabel.Position = UDim2.new(0, 0, 0, 0)
+TitleLabel.Size = UDim2.new(0, 120, 1, 0)
+TitleLabel.Position = UDim2.new(0, 14, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.RichText = true
-TitleLabel.Text = "<font color='#ffffff'>mid</font><font color='#8b5cf6'><b>tier</b></font> <font color='#c084fc'><b>+</b></font>"
-TitleLabel.TextColor3 = THEME.TextWhite
-TitleLabel.TextSize = 16
-TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.Text = "MIDTIER +"
+TitleLabel.TextColor3 = THEME.Text
+TitleLabel.TextSize = 13.5
+TitleLabel.Font = FONT_BOLD
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-TitleLabel.Parent = Header
+TitleLabel.Parent = Topbar
 
--- Status Dot + Label
-local StatusContainer = Instance.new("Frame")
-StatusContainer.Size = UDim2.new(0, 90, 1, 0)
-StatusContainer.Position = UDim2.new(1, -90, 0, 0)
-StatusContainer.BackgroundTransparency = 1
-StatusContainer.Parent = Header
+local VerLabel = Instance.new("TextLabel")
+VerLabel.Size = UDim2.new(0, 45, 1, 0)
+VerLabel.Position = UDim2.new(0, 95, 0, 1)
+VerLabel.BackgroundTransparency = 1
+VerLabel.Text = "v3.6"
+VerLabel.TextColor3 = THEME.Muted
+VerLabel.TextSize = 10
+VerLabel.Font = FONT_REGULAR
+VerLabel.TextXAlignment = Enum.TextXAlignment.Left
+VerLabel.Parent = Topbar
 
 local StatusDot = Instance.new("Frame")
-StatusDot.Size = UDim2.new(0, 7, 0, 7)
-StatusDot.Position = UDim2.new(0, 10, 0.5, -3)
+StatusDot.Size = UDim2.new(0, 6, 0, 6)
+StatusDot.Position = UDim2.new(1, -95, 0.5, -3)
 StatusDot.BackgroundColor3 = THEME.Green
 StatusDot.BorderSizePixel = 0
-StatusDot.Parent = StatusContainer
+StatusDot.Parent = Topbar
 local DotCorner = Instance.new("UICorner")
 DotCorner.CornerRadius = UDim.new(1, 0)
 DotCorner.Parent = StatusDot
 
-local StatusText = Instance.new("TextLabel")
-StatusText.Size = UDim2.new(1, -22, 1, 0)
-StatusText.Position = UDim2.new(0, 22, 0, 0)
-StatusText.BackgroundTransparency = 1
-StatusText.Text = "Connected"
-StatusText.TextColor3 = THEME.Green
-StatusText.TextSize = 11
-StatusText.Font = Enum.Font.GothamMedium
-StatusText.TextXAlignment = Enum.TextXAlignment.Left
-StatusText.Parent = StatusContainer
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Size = UDim2.new(0, 75, 1, 0)
+StatusLabel.Position = UDim2.new(1, -84, 0, 0)
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.Text = "Connected"
+StatusLabel.TextColor3 = THEME.Green
+StatusLabel.TextSize = 11
+StatusLabel.Font = FONT_FAMILY
+StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+StatusLabel.Parent = Topbar
 
--- Auto-Join & Manual Join Box
-local ControlsBox = Instance.new("Frame")
-ControlsBox.Name = "ControlsBox"
-ControlsBox.Size = UDim2.new(1, -24, 0, 76)
-ControlsBox.Position = UDim2.new(0, 12, 0, 46)
-ControlsBox.BackgroundColor3 = THEME.Container
-ControlsBox.BorderSizePixel = 0
-ControlsBox.Parent = MainFrame
+-- Split Sections
+local FeedSection = Instance.new("Frame")
+FeedSection.Name = "FeedSection"
+FeedSection.Size = UDim2.new(0, 310, 1, -48)
+FeedSection.Position = UDim2.new(0, 12, 0, 38)
+FeedSection.BackgroundTransparency = 1
+FeedSection.Parent = MainFrame
 
-local ControlsCorner = Instance.new("UICorner")
-ControlsCorner.CornerRadius = UDim.new(0, 8)
-ControlsCorner.Parent = ControlsBox
+local BlacklistSection = Instance.new("Frame")
+BlacklistSection.Name = "BlacklistSection"
+BlacklistSection.Size = UDim2.new(1, -336, 1, -48)
+BlacklistSection.Position = UDim2.new(0, 326, 0, 38)
+BlacklistSection.BackgroundColor3 = THEME.Panel
+BlacklistSection.BorderSizePixel = 0
+BlacklistSection.Parent = MainFrame
 
-local ControlsStroke = Instance.new("UIStroke")
-ControlsStroke.Color = THEME.Border
-ControlsStroke.Thickness = 1
-ControlsStroke.Parent = ControlsBox
+local BlCorner = Instance.new("UICorner")
+BlCorner.CornerRadius = UDim.new(0, 8)
+BlCorner.Parent = BlacklistSection
 
--- Auto-Join Targets Label & Switch Toggle
+local BlStroke = Instance.new("UIStroke")
+BlStroke.Color = THEME.Stroke
+BlStroke.Thickness = 1
+BlStroke.Parent = BlacklistSection
+
+local BlGrad = Instance.new("UIGradient")
+BlGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, THEME.PanelGrad),
+    ColorSequenceKeypoint.new(1, THEME.Panel)
+})
+BlGrad.Rotation = 90
+BlGrad.Parent = BlacklistSection
+
+-- Controls Panel
+local ControlsPanel = Instance.new("Frame")
+ControlsPanel.Name = "ControlsPanel"
+ControlsPanel.Size = UDim2.new(1, 0, 0, 62)
+ControlsPanel.Position = UDim2.new(0, 0, 0, 0)
+ControlsPanel.BackgroundColor3 = THEME.Panel
+ControlsPanel.BorderSizePixel = 0
+ControlsPanel.Parent = FeedSection
+
+local CpCorner = Instance.new("UICorner")
+CpCorner.CornerRadius = UDim.new(0, 8)
+CpCorner.Parent = ControlsPanel
+
+local CpStroke = Instance.new("UIStroke")
+CpStroke.Color = THEME.Stroke
+CpStroke.Thickness = 1
+CpStroke.Parent = ControlsPanel
+
+local CpGrad = Instance.new("UIGradient")
+CpGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, THEME.PanelGrad),
+    ColorSequenceKeypoint.new(1, THEME.Panel)
+})
+CpGrad.Rotation = 90
+CpGrad.Parent = ControlsPanel
+
 local AutoJoinLbl = Instance.new("TextLabel")
-AutoJoinLbl.Size = UDim2.new(0, 160, 0, 24)
-AutoJoinLbl.Position = UDim2.new(0, 10, 0, 6)
+AutoJoinLbl.Size = UDim2.new(0, 140, 0, 20)
+AutoJoinLbl.Position = UDim2.new(0, 10, 0, 5)
 AutoJoinLbl.BackgroundTransparency = 1
-AutoJoinLbl.Text = "Auto-Join Targets"
-AutoJoinLbl.TextColor3 = THEME.TextMuted
-AutoJoinLbl.TextSize = 11
-AutoJoinLbl.Font = Enum.Font.GothamMedium
+AutoJoinLbl.Text = "AUTO JOIN"
+AutoJoinLbl.TextColor3 = THEME.Muted
+AutoJoinLbl.TextSize = 9.5
+AutoJoinLbl.Font = FONT_BOLD
 AutoJoinLbl.TextXAlignment = Enum.TextXAlignment.Left
-AutoJoinLbl.Parent = ControlsBox
+AutoJoinLbl.Parent = ControlsPanel
 
-local ToggleBtn = Instance.new("TextButton")
-ToggleBtn.Size = UDim2.new(0, 36, 0, 18)
-ToggleBtn.Position = UDim2.new(1, -46, 0, 9)
-ToggleBtn.BackgroundColor3 = THEME.BtnDark
-ToggleBtn.Text = ""
-ToggleBtn.AutoButtonColor = false
-ToggleBtn.Parent = ControlsBox
-
-local ToggleCorner = Instance.new("UICorner")
-ToggleCorner.CornerRadius = UDim.new(1, 0)
-ToggleCorner.Parent = ToggleBtn
-
-local ToggleCircle = Instance.new("Frame")
-ToggleCircle.Size = UDim2.new(0, 14, 0, 14)
-ToggleCircle.Position = UDim2.new(0, 2, 0.5, -7)
-ToggleCircle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-ToggleCircle.BorderSizePixel = 0
-ToggleCircle.Parent = ToggleBtn
-
-local CircleCorner = Instance.new("UICorner")
-CircleCorner.CornerRadius = UDim.new(1, 0)
-CircleCorner.Parent = ToggleCircle
-
-ToggleBtn.MouseButton1Click:Connect(function()
-    state.autojoin = not state.autojoin
-    if state.autojoin then
-        TweenService:Create(ToggleBtn, TweenInfo.new(0.2), { BackgroundColor3 = THEME.AccentPurple }):Play()
-        TweenService:Create(ToggleCircle, TweenInfo.new(0.2), { Position = UDim2.new(1, -16, 0.5, -7) }):Play()
-    else
-        TweenService:Create(ToggleBtn, TweenInfo.new(0.2), { BackgroundColor3 = THEME.BtnDark }):Play()
-        TweenService:Create(ToggleCircle, TweenInfo.new(0.2), { Position = UDim2.new(0, 2, 0.5, -7) }):Play()
-    end
+local AutoJoinSwitch = createSwitch(ControlsPanel, UDim2.new(0, 36, 0, 18), state.autojoin, function(val)
+    state.autojoin = val
 end)
+AutoJoinSwitch.Position = UDim2.new(1, -46, 0, 6)
 
--- JobId Input & Manual Join Button
+-- JobId Input & Join
 local JobInput = Instance.new("TextBox")
-JobInput.Size = UDim2.new(1, -74, 0, 28)
-JobInput.Position = UDim2.new(0, 10, 0, 38)
-JobInput.BackgroundColor3 = Color3.fromRGB(13, 17, 27)
+JobInput.Size = UDim2.new(1, -66, 0, 24)
+JobInput.Position = UDim2.new(0, 10, 0, 29)
+JobInput.BackgroundColor3 = THEME.Bg
 JobInput.Text = ""
 JobInput.PlaceholderText = "Paste specific JobId..."
-JobInput.PlaceholderColor3 = Color3.fromRGB(90, 105, 130)
-JobInput.TextColor3 = THEME.TextWhite
+JobInput.PlaceholderColor3 = Color3.fromRGB(80, 85, 100)
+JobInput.TextColor3 = THEME.Text
 JobInput.TextSize = 10
-JobInput.Font = Enum.Font.Gotham
+JobInput.Font = FONT_REGULAR
 JobInput.ClearTextOnFocus = false
-JobInput.Parent = ControlsBox
-
-local InputCorner = Instance.new("UICorner")
-InputCorner.CornerRadius = UDim.new(0, 6)
-InputCorner.Parent = JobInput
+JobInput.Parent = ControlsPanel
+local JiCorner = Instance.new("UICorner")
+JiCorner.CornerRadius = UDim.new(0, 4)
+JiCorner.Parent = JobInput
+local JiStroke = Instance.new("UIStroke")
+JiStroke.Color = THEME.Stroke
+JiStroke.Thickness = 1
+JiStroke.Parent = JobInput
 
 local ManualJoinBtn = Instance.new("TextButton")
-ManualJoinBtn.Size = UDim2.new(0, 52, 0, 28)
-ManualJoinBtn.Position = UDim2.new(1, -58, 0, 38)
-ManualJoinBtn.BackgroundColor3 = THEME.AccentPurple
+ManualJoinBtn.Size = UDim2.new(0, 48, 0, 24)
+ManualJoinBtn.Position = UDim2.new(1, -54, 0, 29)
+ManualJoinBtn.BackgroundColor3 = THEME.BtnGrad1
 ManualJoinBtn.Text = "Join"
-ManualJoinBtn.TextColor3 = THEME.TextWhite
-ManualJoinBtn.TextSize = 11
-ManualJoinBtn.Font = Enum.Font.GothamBold
+ManualJoinBtn.TextColor3 = THEME.Text
+ManualJoinBtn.TextSize = 10.5
+ManualJoinBtn.Font = FONT_BOLD
 ManualJoinBtn.AutoButtonColor = false
-ManualJoinBtn.Parent = ControlsBox
-
-local ManualCorner = Instance.new("UICorner")
-ManualCorner.CornerRadius = UDim.new(0, 6)
-ManualCorner.Parent = ManualJoinBtn
+ManualJoinBtn.Parent = ControlsPanel
+local MjCorner = Instance.new("UICorner")
+MjCorner.CornerRadius = UDim.new(0, 4)
+MjCorner.Parent = ManualJoinBtn
+local MjStroke = Instance.new("UIStroke")
+MjStroke.Color = THEME.Stroke
+MjStroke.Thickness = 1
+MjStroke.Parent = ManualJoinBtn
+styleButton(ManualJoinBtn, MjStroke)
 
 ManualJoinBtn.MouseButton1Click:Connect(function()
     local id = JobInput.Text:gsub("%s+", "")
     if #id > 5 then
-        ManualJoinBtn.Text = "Joining..."
+        playSound("join")
+        ManualJoinBtn.Text = "..."
         pcall(function()
             TeleportService:TeleportToPlaceInstance(PLACE_ID, id, LP)
         end)
@@ -301,98 +502,257 @@ ManualJoinBtn.MouseButton1Click:Connect(function()
 end)
 
 -- Filter Row
-local FilterFrame = Instance.new("Frame")
-FilterFrame.Name = "FilterFrame"
-FilterFrame.Size = UDim2.new(1, -24, 0, 26)
-FilterFrame.Position = UDim2.new(0, 12, 0, 130)
-FilterFrame.BackgroundTransparency = 1
-FilterFrame.Parent = MainFrame
+local FilterRow = Instance.new("Frame")
+FilterRow.Size = UDim2.new(1, 0, 0, 22)
+FilterRow.Position = UDim2.new(0, 0, 0, 68)
+FilterRow.BackgroundTransparency = 1
+FilterRow.Parent = FeedSection
 
 local FilterLayout = Instance.new("UIListLayout")
 FilterLayout.FillDirection = Enum.FillDirection.Horizontal
-FilterLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-FilterLayout.Padding = UDim.new(0, 5)
-FilterLayout.Parent = FilterFrame
+FilterLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+FilterLayout.Padding = UDim.new(0, 4)
+FilterLayout.Parent = FilterRow
 
 local filterButtons = {}
 local filterConfig = {
-    { name = "All", val = 0 },
-    { name = "1M+", val = 1e6 },
-    { name = "10M+", val = 10e6 },
-    { name = "50M+", val = 50e6 },
-    { name = "100M+", val = 100e6 }
+    { name = "All", val = 0, w = 40 },
+    { name = "1M+", val = 1e6, w = 44 },
+    { name = "10M+", val = 10e6, w = 48 },
+    { name = "50M+", val = 50e6, w = 48 },
+    { name = "100M+", val = 100e6, w = 54 },
+    { name = "OG", val = -1, w = 44 }
 }
 
--- Actions Row (Clear Logs & Refresh Recent)
+-- Actions Row
 local ActionsRow = Instance.new("Frame")
-ActionsRow.Name = "ActionsRow"
-ActionsRow.Size = UDim2.new(1, -24, 0, 26)
-ActionsRow.Position = UDim2.new(0, 12, 0, 162)
+ActionsRow.Size = UDim2.new(1, 0, 0, 24)
+ActionsRow.Position = UDim2.new(0, 0, 0, 95)
 ActionsRow.BackgroundTransparency = 1
-ActionsRow.Parent = MainFrame
+ActionsRow.Parent = FeedSection
 
 local ClearBtn = Instance.new("TextButton")
 ClearBtn.Size = UDim2.new(0.485, 0, 1, 0)
 ClearBtn.Position = UDim2.new(0, 0, 0, 0)
-ClearBtn.BackgroundColor3 = THEME.Container
+ClearBtn.BackgroundColor3 = THEME.Panel
 ClearBtn.Text = "Clear Logs"
-ClearBtn.TextColor3 = THEME.TextMuted
-ClearBtn.TextSize = 11
-ClearBtn.Font = Enum.Font.GothamMedium
+ClearBtn.TextColor3 = THEME.Muted
+ClearBtn.TextSize = 10
+ClearBtn.Font = FONT_FAMILY
 ClearBtn.AutoButtonColor = false
 ClearBtn.Parent = ActionsRow
-
 local ClrCorner = Instance.new("UICorner")
-ClrCorner.CornerRadius = UDim.new(0, 6)
+ClrCorner.CornerRadius = UDim.new(0, 4)
 ClrCorner.Parent = ClearBtn
-
 local ClrStroke = Instance.new("UIStroke")
-ClrStroke.Color = THEME.Border
+ClrStroke.Color = THEME.Stroke
 ClrStroke.Thickness = 1
 ClrStroke.Parent = ClearBtn
+styleButton(ClearBtn, ClrStroke)
 
 local RefreshBtn = Instance.new("TextButton")
 RefreshBtn.Size = UDim2.new(0.485, 0, 1, 0)
 RefreshBtn.Position = UDim2.new(0.515, 0, 0, 0)
-RefreshBtn.BackgroundColor3 = THEME.Container
+RefreshBtn.BackgroundColor3 = THEME.Panel
 RefreshBtn.Text = "Refresh Recent"
-RefreshBtn.TextColor3 = Color3.fromRGB(192, 132, 252)
-RefreshBtn.TextSize = 11
-RefreshBtn.Font = Enum.Font.GothamMedium
+RefreshBtn.TextColor3 = THEME.Text
+RefreshBtn.TextSize = 10
+RefreshBtn.Font = FONT_FAMILY
 RefreshBtn.AutoButtonColor = false
 RefreshBtn.Parent = ActionsRow
-
 local RefCorner = Instance.new("UICorner")
-RefCorner.CornerRadius = UDim.new(0, 6)
+RefCorner.CornerRadius = UDim.new(0, 4)
 RefCorner.Parent = RefreshBtn
-
 local RefStroke = Instance.new("UIStroke")
-RefStroke.Color = THEME.Border
+RefStroke.Color = THEME.Stroke
 RefStroke.Thickness = 1
 RefStroke.Parent = RefreshBtn
+styleButton(RefreshBtn, RefStroke)
 
--- Logs Scrolling Container
+-- Feed Scrolling Container
 local Container = Instance.new("ScrollingFrame")
 Container.Name = "Container"
-Container.Size = UDim2.new(1, -24, 1, -200)
-Container.Position = UDim2.new(0, 12, 0, 194)
+Container.Size = UDim2.new(1, 0, 1, -125)
+Container.Position = UDim2.new(0, 0, 0, 125)
 Container.BackgroundTransparency = 1
-Container.ScrollBarThickness = 3
-Container.ScrollBarImageColor3 = THEME.AccentPurple
-Container.Parent = MainFrame
+Container.ScrollBarThickness = 2
+Container.ScrollBarImageColor3 = Color3.fromRGB(45, 52, 70)
+Container.Parent = FeedSection
 
 local ListLayout = Instance.new("UIListLayout")
 ListLayout.FillDirection = Enum.FillDirection.Vertical
 ListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-ListLayout.Padding = UDim.new(0, 6)
+ListLayout.Padding = UDim.new(0, 5)
 ListLayout.Parent = Container
 
 ListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     Container.CanvasSize = UDim2.new(0, 0, 0, ListLayout.AbsoluteContentSize.Y + 8)
 end)
 
-local function renderLogs()
+-- Blacklist Controls
+local BlHeader = Instance.new("Frame")
+BlHeader.Size = UDim2.new(1, 0, 0, 24)
+BlHeader.BackgroundTransparency = 1
+BlHeader.Parent = BlacklistSection
+
+local BlTitle = Instance.new("TextLabel")
+BlTitle.Size = UDim2.new(1, -14, 1, 0)
+BlTitle.Position = UDim2.new(0, 7, 0, 0)
+BlTitle.BackgroundTransparency = 1
+BlTitle.Text = "BLACKLIST"
+BlTitle.TextColor3 = THEME.Muted
+BlTitle.TextSize = 9.5
+BlTitle.Font = FONT_BOLD
+BlTitle.TextXAlignment = Enum.TextXAlignment.Left
+BlTitle.Parent = BlHeader
+
+local BlToggleRow = Instance.new("Frame")
+BlToggleRow.Size = UDim2.new(1, -14, 0, 24)
+BlToggleRow.Position = UDim2.new(0, 7, 0, 24)
+BlToggleRow.BackgroundColor3 = THEME.Bg
+BlToggleRow.BorderSizePixel = 0
+BlToggleRow.Parent = BlacklistSection
+local BltCorner = Instance.new("UICorner")
+BltCorner.CornerRadius = UDim.new(0, 4)
+BltCorner.Parent = BlToggleRow
+local BltStroke = Instance.new("UIStroke")
+BltStroke.Color = THEME.Stroke
+BltStroke.Thickness = 1
+BltStroke.Parent = BlToggleRow
+
+local BltLbl = Instance.new("TextLabel")
+BltLbl.Size = UDim2.new(1, -42, 1, 0)
+BltLbl.Position = UDim2.new(0, 6, 0, 0)
+BltLbl.BackgroundTransparency = 1
+BltLbl.Text = "Brainrots"
+BltLbl.TextColor3 = THEME.Text
+BltLbl.TextSize = 9.5
+BltLbl.Font = FONT_FAMILY
+BltLbl.TextXAlignment = Enum.TextXAlignment.Left
+BltLbl.Parent = BlToggleRow
+
+local renderLogs
+local BlSwitch = createSwitch(BlToggleRow, UDim2.new(0, 30, 0, 16), state.blacklistEnabled, function(val)
+    state.blacklistEnabled = val
+    if renderLogs then renderLogs() end
+end)
+BlSwitch.Position = UDim2.new(1, -34, 0.5, -8)
+
+local AddInput = Instance.new("TextBox")
+AddInput.Size = UDim2.new(1, -14, 0, 22)
+AddInput.Position = UDim2.new(0, 7, 0, 52)
+AddInput.BackgroundColor3 = THEME.Bg
+AddInput.Text = ""
+AddInput.PlaceholderText = "+ Add blacklist..."
+AddInput.PlaceholderColor3 = Color3.fromRGB(80, 85, 100)
+AddInput.TextColor3 = THEME.Text
+AddInput.TextSize = 9.5
+AddInput.Font = FONT_REGULAR
+AddInput.ClearTextOnFocus = false
+AddInput.Parent = BlacklistSection
+local AiCorner = Instance.new("UICorner")
+AiCorner.CornerRadius = UDim.new(0, 4)
+AiCorner.Parent = AddInput
+local AiStroke = Instance.new("UIStroke")
+AiStroke.Color = THEME.Stroke
+AiStroke.Thickness = 1
+AiStroke.Parent = AddInput
+
+local BlockedCountLbl = Instance.new("TextLabel")
+BlockedCountLbl.Size = UDim2.new(1, -14, 0, 18)
+BlockedCountLbl.Position = UDim2.new(0, 7, 1, -20)
+BlockedCountLbl.BackgroundTransparency = 1
+BlockedCountLbl.Text = "Blocked: 0"
+BlockedCountLbl.TextColor3 = THEME.Muted
+BlockedCountLbl.TextSize = 9.5
+BlockedCountLbl.Font = FONT_REGULAR
+BlockedCountLbl.TextXAlignment = Enum.TextXAlignment.Left
+BlockedCountLbl.Parent = BlacklistSection
+
+local TagScroll = Instance.new("ScrollingFrame")
+TagScroll.Size = UDim2.new(1, -14, 1, -102)
+TagScroll.Position = UDim2.new(0, 7, 0, 78)
+TagScroll.BackgroundTransparency = 1
+TagScroll.ScrollBarThickness = 2
+TagScroll.ScrollBarImageColor3 = Color3.fromRGB(45, 52, 70)
+TagScroll.Parent = BlacklistSection
+
+local TagLayout = Instance.new("UIListLayout")
+TagLayout.FillDirection = Enum.FillDirection.Vertical
+TagLayout.Padding = UDim.new(0, 4)
+TagLayout.Parent = TagScroll
+
+TagLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    TagScroll.CanvasSize = UDim2.new(0, 0, 0, TagLayout.AbsoluteContentSize.Y + 4)
+end)
+
+local function renderBlacklistTags()
+    for _, child in ipairs(TagScroll:GetChildren()) do
+        if child:IsA("Frame") then child:Destroy() end
+    end
+
+    for idx, term in ipairs(state.blacklist) do
+        local tagRow = Instance.new("Frame")
+        tagRow.Size = UDim2.new(1, -4, 0, 20)
+        tagRow.BackgroundColor3 = THEME.Bg
+        tagRow.BorderSizePixel = 0
+        tagRow.Parent = TagScroll
+
+        local trCorner = Instance.new("UICorner")
+        trCorner.CornerRadius = UDim.new(0, 4)
+        trCorner.Parent = tagRow
+        local trStroke = Instance.new("UIStroke")
+        trStroke.Color = THEME.Stroke
+        trStroke.Thickness = 1
+        trStroke.Parent = tagRow
+
+        local tagText = Instance.new("TextLabel")
+        tagText.Size = UDim2.new(1, -22, 1, 0)
+        tagText.Position = UDim2.new(0, 6, 0, 0)
+        tagText.BackgroundTransparency = 1
+        tagText.Text = term
+        tagText.TextColor3 = THEME.Text
+        tagText.TextSize = 9.5
+        tagText.Font = FONT_FAMILY
+        tagText.TextXAlignment = Enum.TextXAlignment.Left
+        tagText.TextTruncate = Enum.TextTruncate.AtEnd
+        tagText.Parent = tagRow
+
+        local delBtn = Instance.new("TextButton")
+        delBtn.Size = UDim2.new(0, 16, 0, 16)
+        delBtn.Position = UDim2.new(1, -18, 0.5, -8)
+        delBtn.BackgroundTransparency = 1
+        delBtn.Text = "x"
+        delBtn.TextColor3 = THEME.Muted
+        delBtn.TextSize = 10
+        delBtn.Font = FONT_BOLD
+        delBtn.Parent = tagRow
+
+        delBtn.MouseButton1Click:Connect(function()
+            playSound("click")
+            table.remove(state.blacklist, idx)
+            saveBlacklist()
+            renderBlacklistTags()
+            renderLogs()
+        end)
+    end
+end
+
+AddInput.FocusLost:Connect(function(enterPressed)
+    if enterPressed and #AddInput.Text:gsub("%s+", "") > 0 then
+        playSound("click")
+        local newTerm = AddInput.Text:gsub("^%s+", ""):gsub("%s+$", "")
+        table.insert(state.blacklist, newTerm)
+        saveBlacklist()
+        AddInput.Text = ""
+        renderBlacklistTags()
+        renderLogs()
+    end
+end)
+
+-- RENDER FEED & SORTING
+renderLogs = function()
     for _, child in ipairs(Container:GetChildren()) do
         if child:IsA("Frame") or child:IsA("TextLabel") then
             child:Destroy()
@@ -400,6 +760,8 @@ local function renderLogs()
     end
 
     local items = {}
+    local blockedCount = 0
+
     for _, entry in ipairs(state.rawLogs) do
         local jobId = entry.jobId
         local plots = entry.plots or {}
@@ -409,48 +771,56 @@ local function renderLogs()
                 local genStr = pet.gen or "$0/s"
                 local rarity = pet.rarity or ""
                 local uid = jobId .. "_" .. petName .. "_" .. genStr
-                
-                if not state.clearedLogs[uid] and not string.find(petName:lower(), "fuse ticket") then
-                    local genVal = parseGenValue(genStr)
-                    local og = isOG(petName, rarity)
-                    
-                    local pass = false
-                    if state.minFilter == 0 then
-                        pass = true
-                    else
-                        pass = (genVal >= state.minFilter) or og
-                    end
 
-                    if pass then
-                        local sortScore = og and (1e24 + genVal) or genVal
-                        table.insert(items, {
-                            jobId = jobId,
-                            name = petName,
-                            gen = genStr,
-                            genVal = genVal,
-                            sortScore = sortScore,
-                            og = og,
-                            uid = uid
-                        })
+                if not state.clearedLogs[uid] then
+                    if isBlacklisted(petName) then
+                        blockedCount = blockedCount + 1
+                    else
+                        local genVal = parseGenValue(genStr)
+                        local og = isOG(petName, rarity)
+
+                        local pass = false
+                        if state.minFilter == -1 then
+                            pass = og
+                        elseif state.minFilter == 0 then
+                            pass = true
+                        else
+                            pass = (genVal >= state.minFilter) or og
+                        end
+
+                        if pass then
+                            local sortScore = og and (1e24 + genVal) or genVal
+                            table.insert(items, {
+                                jobId = jobId,
+                                name = petName,
+                                gen = genStr,
+                                genVal = genVal,
+                                sortScore = sortScore,
+                                og = og,
+                                uid = uid
+                            })
+                        end
                     end
                 end
             end
         end
     end
 
-    -- Greatest to Least sorting
+    state.blockedCount = blockedCount
+    BlockedCountLbl.Text = string.format("Blocked: %d", blockedCount)
+
     table.sort(items, function(a, b)
         return a.sortScore > b.sortScore
     end)
 
     if #items == 0 then
         local EmptyMsg = Instance.new("TextLabel")
-        EmptyMsg.Size = UDim2.new(1, 0, 0, 50)
+        EmptyMsg.Size = UDim2.new(1, 0, 0, 48)
         EmptyMsg.BackgroundTransparency = 1
         EmptyMsg.Text = "No active targets matching filter"
-        EmptyMsg.TextColor3 = THEME.TextMuted
-        EmptyMsg.TextSize = 11
-        EmptyMsg.Font = Enum.Font.GothamMedium
+        EmptyMsg.TextColor3 = THEME.Muted
+        EmptyMsg.TextSize = 10
+        EmptyMsg.Font = FONT_FAMILY
         EmptyMsg.Parent = Container
         return
     end
@@ -458,108 +828,110 @@ local function renderLogs()
     for idx, item in ipairs(items) do
         local Card = Instance.new("Frame")
         Card.Name = "Card_" .. idx
-        Card.Size = UDim2.new(1, 0, 0, 56)
-        Card.BackgroundColor3 = THEME.Card
+        Card.Size = UDim2.new(1, 0, 0, 48)
+        Card.BackgroundColor3 = item.og and THEME.CardOG or THEME.Card
         Card.BorderSizePixel = 0
         Card.LayoutOrder = idx
         Card.Parent = Container
 
         local CardCorner = Instance.new("UICorner")
-        CardCorner.CornerRadius = UDim.new(0, 8)
+        CardCorner.CornerRadius = UDim.new(0, 6)
         CardCorner.Parent = Card
 
         local CardStroke = Instance.new("UIStroke")
-        CardStroke.Color = item.og and THEME.Gold or THEME.CardBorder
-        CardStroke.Thickness = item.og and 1.4 or 1
+        CardStroke.Color = item.og and THEME.Gold or THEME.Stroke
+        CardStroke.Thickness = 1
         CardStroke.Parent = Card
 
-        -- Pet Name
+        local CardGrad = Instance.new("UIGradient")
+        CardGrad.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, item.og and Color3.fromRGB(38, 32, 16) or THEME.CardGrad),
+            ColorSequenceKeypoint.new(1, item.og and THEME.CardOG or THEME.Card)
+        })
+        CardGrad.Rotation = 90
+        CardGrad.Parent = Card
+
         local NameLbl = Instance.new("TextLabel")
-        NameLbl.Size = UDim2.new(1, -110, 0, 18)
-        NameLbl.Position = UDim2.new(0, 10, 0, 7)
+        NameLbl.Size = UDim2.new(1, -95, 0, 16)
+        NameLbl.Position = UDim2.new(0, 10, 0, 6)
         NameLbl.BackgroundTransparency = 1
-        NameLbl.Text = (item.og and "[OG] " or "") .. item.name
-        NameLbl.TextColor3 = item.og and THEME.Gold or THEME.TextWhite
-        NameLbl.TextSize = 12
-        NameLbl.Font = Enum.Font.GothamBold
+        NameLbl.Text = (item.og and "👑 " or "") .. item.name
+        NameLbl.TextColor3 = item.og and THEME.Gold or THEME.Text
+        NameLbl.TextSize = 11.5
+        NameLbl.Font = FONT_BOLD
         NameLbl.TextXAlignment = Enum.TextXAlignment.Left
         NameLbl.TextTruncate = Enum.TextTruncate.AtEnd
         NameLbl.Parent = Card
 
-        -- Gen Badge (Pill)
-        local GenBadge = Instance.new("Frame")
-        GenBadge.Size = UDim2.new(0, 68, 0, 18)
-        GenBadge.Position = UDim2.new(0, 10, 0, 29)
-        GenBadge.BackgroundColor3 = THEME.BadgeBg
-        GenBadge.BorderSizePixel = 0
-        GenBadge.Parent = Card
-
-        local BadgeCorner = Instance.new("UICorner")
-        BadgeCorner.CornerRadius = UDim.new(0, 4)
-        BadgeCorner.Parent = GenBadge
-
         local GenLbl = Instance.new("TextLabel")
-        GenLbl.Size = UDim2.new(1, 0, 1, 0)
+        GenLbl.Size = UDim2.new(1, -95, 0, 14)
+        GenLbl.Position = UDim2.new(0, 10, 0, 24)
         GenLbl.BackgroundTransparency = 1
         GenLbl.Text = item.gen
-        GenLbl.TextColor3 = THEME.BadgeText
+        GenLbl.TextColor3 = THEME.Green
         GenLbl.TextSize = 10
-        GenLbl.Font = Enum.Font.GothamBold
-        GenLbl.Parent = GenBadge
+        GenLbl.Font = FONT_FAMILY
+        GenLbl.TextXAlignment = Enum.TextXAlignment.Left
+        GenLbl.Parent = Card
 
-        -- Copy Button
         local CopyBtn = Instance.new("TextButton")
-        CopyBtn.Size = UDim2.new(0, 42, 0, 26)
-        CopyBtn.Position = UDim2.new(1, -94, 0.5, -13)
-        CopyBtn.BackgroundColor3 = THEME.BtnDark
+        CopyBtn.Size = UDim2.new(0, 38, 0, 24)
+        CopyBtn.Position = UDim2.new(1, -84, 0.5, -12)
+        CopyBtn.BackgroundColor3 = THEME.Panel
         CopyBtn.Text = "Copy"
-        CopyBtn.TextColor3 = Color3.fromRGB(180, 195, 220)
-        CopyBtn.TextSize = 10.5
-        CopyBtn.Font = Enum.Font.GothamMedium
+        CopyBtn.TextColor3 = THEME.Muted
+        CopyBtn.TextSize = 9.5
+        CopyBtn.Font = FONT_FAMILY
         CopyBtn.AutoButtonColor = false
         CopyBtn.Parent = Card
-
-        local CopyCorner = Instance.new("UICorner")
-        CopyCorner.CornerRadius = UDim.new(0, 6)
-        CopyCorner.Parent = CopyBtn
+        local CpCornerBtn = Instance.new("UICorner")
+        CpCornerBtn.CornerRadius = UDim.new(0, 4)
+        CpCornerBtn.Parent = CopyBtn
+        local CpStrokeBtn = Instance.new("UIStroke")
+        CpStrokeBtn.Color = THEME.Stroke
+        CpStrokeBtn.Thickness = 1
+        CpStrokeBtn.Parent = CopyBtn
+        styleButton(CopyBtn, CpStrokeBtn)
 
         CopyBtn.MouseButton1Click:Connect(function()
-            if setclipboard then
-                setclipboard(item.jobId)
-            end
+            if setclipboard then setclipboard(item.jobId) end
             CopyBtn.Text = "Copied"
             task.wait(1)
             CopyBtn.Text = "Copy"
         end)
 
-        -- Join Button
         local JoinBtn = Instance.new("TextButton")
-        JoinBtn.Size = UDim2.new(0, 42, 0, 26)
-        JoinBtn.Position = UDim2.new(1, -46, 0.5, -13)
-        JoinBtn.BackgroundColor3 = THEME.AccentPurple
+        JoinBtn.Size = UDim2.new(0, 38, 0, 24)
+        JoinBtn.Position = UDim2.new(1, -42, 0.5, -12)
+        JoinBtn.BackgroundColor3 = item.og and THEME.Gold or THEME.JoinBtn1
         JoinBtn.Text = "Join"
-        JoinBtn.TextColor3 = THEME.TextWhite
-        JoinBtn.TextSize = 10.5
-        JoinBtn.Font = Enum.Font.GothamBold
+        JoinBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
+        JoinBtn.TextSize = 10
+        JoinBtn.Font = FONT_BOLD
         JoinBtn.AutoButtonColor = false
         JoinBtn.Parent = Card
-
-        local JoinCorner = Instance.new("UICorner")
-        JoinCorner.CornerRadius = UDim.new(0, 6)
-        JoinCorner.Parent = JoinBtn
+        local JbCorner = Instance.new("UICorner")
+        JbCorner.CornerRadius = UDim.new(0, 4)
+        JbCorner.Parent = JoinBtn
+        styleButton(JoinBtn, nil, item.og and THEME.Gold or THEME.JoinBtn1, Color3.fromRGB(240, 240, 240))
 
         JoinBtn.MouseButton1Click:Connect(function()
+            playSound("join")
             JoinBtn.Text = "..."
             pcall(function()
                 TeleportService:TeleportToPlaceInstance(PLACE_ID, item.jobId, LP)
             end)
         end)
 
-        -- Auto-Join trigger
+        if item.og and not state.joinedJobs[item.jobId] then
+            playSound("og")
+        end
+
         if state.autojoin and not state.joinedJobs[item.jobId] then
             state.joinedJobs[item.jobId] = true
             JoinBtn.Text = "AUTO"
             task.spawn(function()
+                playSound("join")
                 pcall(function()
                     TeleportService:TeleportToPlaceInstance(PLACE_ID, item.jobId, LP)
                 end)
@@ -568,38 +940,39 @@ local function renderLogs()
     end
 end
 
--- Filter Button Generation
 for _, cfg in ipairs(filterConfig) do
     local btn = Instance.new("TextButton")
     btn.Name = "Filter_" .. cfg.name
-    btn.Size = UDim2.new(0, 54, 1, 0)
-    btn.BackgroundColor3 = (state.activeFilterBtn == cfg.name) and THEME.AccentPurple or THEME.Container
+    btn.Size = UDim2.new(0, cfg.w, 1, 0)
+    btn.BackgroundColor3 = (state.activeFilterBtn == cfg.name) and THEME.JoinBtn1 or THEME.Panel
     btn.Text = cfg.name
-    btn.TextColor3 = (state.activeFilterBtn == cfg.name) and THEME.TextWhite or THEME.TextMuted
-    btn.TextSize = 10.5
-    btn.Font = Enum.Font.GothamBold
+    btn.TextColor3 = (state.activeFilterBtn == cfg.name) and Color3.fromRGB(0, 0, 0) or THEME.Muted
+    btn.TextSize = 9.5
+    btn.Font = FONT_BOLD
     btn.AutoButtonColor = false
-    btn.Parent = FilterFrame
+    btn.Parent = FilterRow
 
     local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 6)
+    corner.CornerRadius = UDim.new(0, 4)
     corner.Parent = btn
 
     local stroke = Instance.new("UIStroke")
-    stroke.Color = THEME.Border
+    stroke.Color = THEME.Stroke
     stroke.Thickness = 1
     stroke.Parent = btn
+    styleButton(btn, stroke)
 
     btn.MouseButton1Click:Connect(function()
+        playSound("click")
         state.activeFilterBtn = cfg.name
         state.minFilter = cfg.val
         for name, b in pairs(filterButtons) do
             if name == cfg.name then
-                b.BackgroundColor3 = THEME.AccentPurple
-                b.TextColor3 = THEME.TextWhite
+                b.BackgroundColor3 = THEME.JoinBtn1
+                b.TextColor3 = Color3.fromRGB(0, 0, 0)
             else
-                b.BackgroundColor3 = THEME.Container
-                b.TextColor3 = THEME.TextMuted
+                b.BackgroundColor3 = THEME.Panel
+                b.TextColor3 = THEME.Muted
             end
         end
         renderLogs()
@@ -625,8 +998,8 @@ local function fetchLogs()
 
         if success and res then
             StatusDot.BackgroundColor3 = THEME.Green
-            StatusText.Text = "Connected"
-            StatusText.TextColor3 = THEME.Green
+            StatusLabel.Text = "Connected"
+            StatusLabel.TextColor3 = THEME.Green
             local decodeOk, data = pcall(function()
                 return HttpService:JSONDecode(res)
             end)
@@ -636,16 +1009,20 @@ local function fetchLogs()
             end
         else
             StatusDot.BackgroundColor3 = THEME.Red
-            StatusText.Text = "Reconnecting..."
-            StatusText.TextColor3 = THEME.Red
+            StatusLabel.Text = "Reconnecting..."
+            StatusLabel.TextColor3 = THEME.Red
         end
         RefreshBtn.Text = "Refresh Recent"
     end)
 end
 
-RefreshBtn.MouseButton1Click:Connect(fetchLogs)
+RefreshBtn.MouseButton1Click:Connect(function()
+    playSound("click")
+    fetchLogs()
+end)
 
 ClearBtn.MouseButton1Click:Connect(function()
+    playSound("click")
     for _, entry in ipairs(state.rawLogs) do
         local jobId = entry.jobId
         for _, pets in pairs(entry.plots or {}) do
@@ -658,7 +1035,6 @@ ClearBtn.MouseButton1Click:Connect(function()
     renderLogs()
 end)
 
--- Auto Fetch Background Loop
 task.spawn(function()
     while ScreenGui.Parent do
         fetchLogs()
@@ -666,4 +1042,5 @@ task.spawn(function()
     end
 end)
 
+renderBlacklistTags()
 fetchLogs()
