@@ -1,7 +1,3 @@
--- =====================================================================
--- MIDTIER + | BEST BRAINROT TP & INSTANT MULTI-REMOTE STEAL
--- Place ID: 114528917072225 (Steal A Brainrot)
--- =====================================================================
 
 if not game:IsLoaded() then
     game.Loaded:Wait()
