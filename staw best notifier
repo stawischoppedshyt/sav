@@ -1,4 +1,8 @@
--- Wait for game to finish loading for auto-executors
+-- =====================================================================
+-- MIDTIER + | BEST BRAINROT TP & INSTANT MULTI-REMOTE STEAL
+-- Place ID: 114528917072225 (Steal A Brainrot)
+-- =====================================================================
+
 if not game:IsLoaded() then
     game.Loaded:Wait()
 end
@@ -29,7 +33,7 @@ if TargetParent:FindFirstChild("MidTierTeleportScreen") then
     TargetParent.MidTierTeleportScreen:Destroy()
 end
 
--- Clean old tags
+-- Clean previous head tags
 for _, p in ipairs(Players:GetPlayers()) do
     if p.Character and p.Character:FindFirstChild("Head") and p.Character.Head:FindFirstChild("MidTierHeadTag") then
         p.Character.Head.MidTierHeadTag:Destroy()
@@ -46,7 +50,13 @@ local FETCH_URL = "https://sav-jn22.onrender.com/list"
 local PLACE_ID = 114528917072225
 local SAVE_DIR = "MidTierPlus"
 local SAVE_FILE = SAVE_DIR .. "/blacklist.json"
-local PRESENCE_TOPIC = "mt_pr_" .. string.gsub(game.JobId, "[^%w]", ""):sub(1, 24)
+local TOPIC_URL = "https://ntfy.sh/mt_pr_" .. tostring(game.JobId)
+
+-- Game Remotes & Data
+local NetPackages = ReplicatedStorage:WaitForChild("Packages", 10):WaitForChild("Net", 10)
+local HOLD_REMOTE = NetPackages and NetPackages:FindFirstChild("RE/b096e1ca-9c3a-453b-8b60-268b235083b9")
+local STEAL_REMOTE = NetPackages and NetPackages:FindFirstChild("RE/5aa39ea1-0c65-4fcf-aff9-b18a7ef277c3")
+local AnimalsData = require(ReplicatedStorage:WaitForChild("Datas"):WaitForChild("Animals"))
 
 local state = {
     autojoin = false,
@@ -60,9 +70,7 @@ local state = {
         "la grande",
         "fuse ticket"
     },
-    blockedCount = 0,
-    detectedUsers = {},
-    uiVisible = true
+    blockedCount = 0
 }
 
 local function saveBlacklist()
@@ -139,509 +147,29 @@ local function playSound(soundType)
 end
 
 -- =========================================================================
--- DYNAMIC ASSET & BRAINROT 3D MODEL LOOKUP
+-- VALUE PARSING & TARGET FINDER METHOD
 -- =========================================================================
-local cachedAnimalsFolder = nil
-local function getAnimalsFolder()
-    if cachedAnimalsFolder and cachedAnimalsFolder.Parent then
-        return cachedAnimalsFolder
-    end
-    local models = ReplicatedStorage:FindFirstChild("Models") or ReplicatedStorage:WaitForChild("Models", 10)
-    if models then
-        local animals = models:FindFirstChild("Animals") or models:WaitForChild("Animals", 10)
-        if animals then
-            cachedAnimalsFolder = animals
-            return animals
-        end
-    end
-    return nil
-end
-
-local function getPetModel(petName)
-    local folder = getAnimalsFolder()
-    if not folder then return nil end
-    local m = folder:FindFirstChild(petName)
-    if m then return m end
-    local lower = tostring(petName):lower()
-    for _, child in ipairs(folder:GetChildren()) do
-        if child.Name:lower() == lower then
-            return child
-        end
-    end
-    for _, child in ipairs(folder:GetChildren()) do
-        if child.Name:lower():find(lower, 1, true) or lower:find(child.Name:lower(), 1, true) then
-            return child
-        end
-    end
-    return nil
-end
-
--- =========================================================================
--- CUSTOM TELEPORT OVERRIDE SCREEN
--- =========================================================================
-local function showCustomTeleportScreen(data)
-    if TargetParent:FindFirstChild("MidTierTeleportScreen") then
-        TargetParent.MidTierTeleportScreen:Destroy()
+local function getGenerationValue(text)
+    if not text then
+        return 0
     end
 
-    local tpGui = Instance.new("ScreenGui")
-    tpGui.Name = "MidTierTeleportScreen"
-    tpGui.DisplayOrder = 999999
-    tpGui.ResetOnSpawn = false
-    tpGui.IgnoreGuiInset = true
-    tpGui.Parent = TargetParent
-
-    local bg = Instance.new("Frame")
-    bg.Size = UDim2.new(1, 0, 1, 0)
-    bg.BackgroundColor3 = Color3.fromRGB(8, 10, 14)
-    bg.BorderSizePixel = 0
-    bg.Parent = tpGui
-
-    local CenterCard = Instance.new("Frame")
-    CenterCard.Size = UDim2.new(0, 360, 0, 260)
-    CenterCard.AnchorPoint = Vector2.new(0.5, 0.5)
-    CenterCard.Position = UDim2.new(0.5, 0, 0.5, 0)
-    CenterCard.BackgroundColor3 = THEME.Panel
-    CenterCard.BorderSizePixel = 0
-    CenterCard.Parent = bg
-
-    local cCorner = Instance.new("UICorner")
-    cCorner.CornerRadius = UDim.new(0, 12)
-    cCorner.Parent = CenterCard
-
-    local cStroke = Instance.new("UIStroke")
-    cStroke.Color = data.og and THEME.Gold or THEME.Green
-    cStroke.Thickness = 1.5
-    cStroke.Parent = CenterCard
-
-    local Title = Instance.new("TextLabel")
-    Title.Size = UDim2.new(1, 0, 0, 24)
-    Title.Position = UDim2.new(0, 0, 0, 14)
-    Title.BackgroundTransparency = 1
-    Title.Text = "TELEPORTING TO TARGET"
-    Title.TextColor3 = THEME.Muted
-    Title.TextSize = 10.5
-    Title.Font = FONT_BOLD
-    Title.Parent = CenterCard
-
-    local iconBox = Instance.new("Frame")
-    iconBox.Size = UDim2.new(0, 72, 0, 72)
-    iconBox.Position = UDim2.new(0.5, -36, 0, 42)
-    iconBox.BackgroundColor3 = THEME.Bg
-    iconBox.BorderSizePixel = 0
-    iconBox.Parent = CenterCard
-    local ibCorner = Instance.new("UICorner")
-    ibCorner.CornerRadius = UDim.new(0, 8)
-    ibCorner.Parent = iconBox
-    local ibStroke = Instance.new("UIStroke")
-    ibStroke.Color = THEME.Stroke
-    ibStroke.Thickness = 1
-    ibStroke.Parent = iconBox
-
-    local vf = Instance.new("ViewportFrame")
-    vf.Size = UDim2.new(1, 0, 1, 0)
-    vf.BackgroundTransparency = 1
-    vf.Parent = iconBox
-
-    task.spawn(function()
-        local model = getPetModel(data.name or "")
-        if not model then
-            for _ = 1, 8 do
-                task.wait(0.4)
-                if not vf or not vf.Parent then return end
-                model = getPetModel(data.name or "")
-                if model then break end
-            end
-        end
-
-        if model and vf and vf.Parent then
-            local clone = model:Clone()
-            for _, desc in ipairs(clone:GetDescendants()) do
-                if desc:IsA("Script") or desc:IsA("LocalScript") or desc:IsA("Sound") or desc:IsA("ParticleEmitter") then
-                    desc:Destroy()
-                end
-            end
-            clone.Parent = vf
-            local cf, s = clone:GetBoundingBox()
-            local cam = Instance.new("Camera")
-            cam.FieldOfView = 50
-            local maxDim = math.max(s.X, s.Y, s.Z)
-            local dist = maxDim * 1.5
-            if dist < 1.8 then dist = 1.8 end
-            cam.CFrame = CFrame.new(cf.Position + Vector3.new(dist * 0.7, dist * 0.45, dist * 0.85), cf.Position)
-            cam.Parent = vf
-            vf.CurrentCamera = cam
-        end
-    end)
-
-    local PetNameLbl = Instance.new("TextLabel")
-    PetNameLbl.Size = UDim2.new(1, -20, 0, 22)
-    PetNameLbl.Position = UDim2.new(0, 10, 0, 122)
-    PetNameLbl.BackgroundTransparency = 1
-    PetNameLbl.Text = (data.og and "[OG] " or "") .. (data.name or "Selected Server")
-    PetNameLbl.TextColor3 = data.og and THEME.Gold or THEME.Text
-    PetNameLbl.TextSize = 14.5
-    PetNameLbl.Font = FONT_BOLD
-    PetNameLbl.Parent = CenterCard
-
-    local GenLbl = Instance.new("TextLabel")
-    GenLbl.Size = UDim2.new(1, -20, 0, 18)
-    GenLbl.Position = UDim2.new(0, 10, 0, 146)
-    GenLbl.BackgroundTransparency = 1
-    GenLbl.Text = data.gen or ""
-    GenLbl.TextColor3 = THEME.Green
-    GenLbl.TextSize = 12.5
-    GenLbl.Font = FONT_FAMILY
-    GenLbl.Parent = CenterCard
-
-    local StatusLbl = Instance.new("TextLabel")
-    StatusLbl.Size = UDim2.new(1, -20, 0, 16)
-    StatusLbl.Position = UDim2.new(0, 10, 0, 178)
-    StatusLbl.BackgroundTransparency = 1
-    StatusLbl.Text = "Connecting to server..."
-    StatusLbl.TextColor3 = THEME.Muted
-    StatusLbl.TextSize = 11
-    StatusLbl.Font = FONT_REGULAR
-    StatusLbl.Parent = CenterCard
-
-    local JobLbl = Instance.new("TextLabel")
-    JobLbl.Size = UDim2.new(1, -20, 0, 14)
-    JobLbl.Position = UDim2.new(0, 10, 1, -24)
-    JobLbl.BackgroundTransparency = 1
-    JobLbl.Text = "JobId: " .. tostring(data.jobId or ""):sub(1, 20) .. "..."
-    JobLbl.TextColor3 = Color3.fromRGB(80, 88, 105)
-    JobLbl.TextSize = 9.5
-    JobLbl.Font = FONT_REGULAR
-    JobLbl.Parent = CenterCard
-
-    pcall(function()
-        TeleportService:SetTeleportGui(tpGui)
-    end)
-
-    return tpGui
-end
-
-local function executeTeleport(data)
-    playSound("join")
-    showCustomTeleportScreen(data)
-    task.wait(0.1)
-    pcall(function()
-        TeleportService:TeleportToPlaceInstance(PLACE_ID, data.jobId, LP)
-    end)
-end
-
--- =========================================================================
--- MAIN GUI CONTAINERS & DROP SHADOW
--- =========================================================================
-local Shadow = Instance.new("ImageLabel")
-Shadow.Name = "Shadow"
-Shadow.AnchorPoint = Vector2.new(0.5, 0.5)
-Shadow.Position = UDim2.new(0.5, 0, 0.5, 0)
-Shadow.Size = UDim2.new(0, 520, 0, 440)
-Shadow.BackgroundTransparency = 1
-Shadow.Image = "rbxassetid://6015897843"
-Shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
-Shadow.ImageTransparency = 0.4
-Shadow.ScaleType = Enum.ScaleType.Slice
-Shadow.SliceCenter = Rect.new(49, 49, 450, 450)
-Shadow.Parent = ScreenGui
-
-local MainFrame = Instance.new("Frame")
-MainFrame.Name = "MainFrame"
-MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-MainFrame.Size = UDim2.new(0, 490, 0, 410)
-MainFrame.BackgroundColor3 = THEME.Bg
-MainFrame.BorderSizePixel = 0
-MainFrame.ClipsDescendants = true
-MainFrame.Parent = ScreenGui
-
-local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0, 10)
-MainCorner.Parent = MainFrame
-
-local MainStroke = Instance.new("UIStroke")
-MainStroke.Color = THEME.Stroke
-MainStroke.Thickness = 1.2
-MainStroke.Parent = MainFrame
-
-local MainBgGrad = Instance.new("UIGradient")
-MainBgGrad.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(16, 20, 28)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(10, 12, 16))
-})
-MainBgGrad.Rotation = 45
-MainBgGrad.Parent = MainFrame
-
--- =========================================================================
--- MOBILE AUTO-DETECTION & RESPONSIVE SCALING
--- =========================================================================
-local camera = workspace.CurrentCamera
-local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
-
-local function calculateScale()
-    local vp = camera and camera.ViewportSize or Vector2.new(1920, 1080)
-    if isMobile or vp.X <= 720 then
-        return math.clamp(vp.X / 600, 0.65, 0.82)
-    elseif vp.X <= 1000 then
-        return 0.88
-    else
-        return 1.0
-    end
-end
-
-local MainScale = Instance.new("UIScale")
-MainScale.Scale = calculateScale()
-MainScale.Parent = MainFrame
-
-local ShadowScale = Instance.new("UIScale")
-ShadowScale.Scale = MainScale.Scale
-ShadowScale.Parent = Shadow
-
-if camera then
-    camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
-        local s = calculateScale()
-        MainScale.Scale = s
-        ShadowScale.Scale = s
-    end)
-end
-
--- =========================================================================
--- FLOATING TOGGLE BUTTON (ALL DEVICES)
--- =========================================================================
-local ToggleBtn = Instance.new("TextButton")
-ToggleBtn.Name = "MidTierToggleBtn"
-ToggleBtn.Size = UDim2.new(0, 44, 0, 44)
-ToggleBtn.Position = UDim2.new(0, 16, 0.45, 0)
-ToggleBtn.BackgroundColor3 = THEME.Panel
-ToggleBtn.Text = "MT+"
-ToggleBtn.TextColor3 = THEME.Green
-ToggleBtn.TextSize = 12
-ToggleBtn.Font = FONT_BOLD
-ToggleBtn.AutoButtonColor = false
-ToggleBtn.Parent = ScreenGui
-
-local TbCorner = Instance.new("UICorner")
-TbCorner.CornerRadius = UDim.new(0, 12)
-TbCorner.Parent = ToggleBtn
-
-local TbStroke = Instance.new("UIStroke")
-TbStroke.Color = THEME.Green
-TbStroke.Thickness = 1.2
-TbStroke.Parent = ToggleBtn
-
-local function toggleUI()
-    playSound("click")
-    state.uiVisible = not state.uiVisible
-    if state.uiVisible then
-        MainFrame.Visible = true
-        Shadow.Visible = true
-        TweenService:Create(ToggleBtn, TweenInfo.new(0.15), { BackgroundColor3 = THEME.Panel }):Play()
-        TweenService:Create(TbStroke, TweenInfo.new(0.15), { Color = THEME.Green }):Play()
-    else
-        MainFrame.Visible = false
-        Shadow.Visible = false
-        TweenService:Create(ToggleBtn, TweenInfo.new(0.15), { BackgroundColor3 = THEME.Bg }):Play()
-        TweenService:Create(TbStroke, TweenInfo.new(0.15), { Color = THEME.Stroke }):Play()
-    end
-end
-
-ToggleBtn.MouseButton1Click:Connect(toggleUI)
-
-local tbDragging, tbDragStart, tbStartPos = false, nil, nil
-ToggleBtn.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        tbDragging = true
-        tbDragStart = input.Position
-        tbStartPos = ToggleBtn.Position
-    end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        tbDragging = false
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if tbDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        local delta = input.Position - tbDragStart
-        ToggleBtn.Position = UDim2.new(
-            tbStartPos.X.Scale,
-            tbStartPos.X.Offset + delta.X,
-            tbStartPos.Y.Scale,
-            tbStartPos.Y.Offset + delta.Y
-        )
-    end
-end)
-
-UserInputService.InputBegan:Connect(function(input, gpe)
-    if not gpe and (input.KeyCode == Enum.KeyCode.RightControl or input.KeyCode == Enum.KeyCode.Insert) then
-        toggleUI()
-    end
-end)
-
--- =========================================================================
--- BRAINROT 3D ICON RENDERER (WITH ASYNC STREAMING RETRY)
--- =========================================================================
-local function createPetIcon(parent, petName)
-    local iconBox = Instance.new("Frame")
-    iconBox.Name = "PetIconBox"
-    iconBox.Size = UDim2.new(0, 36, 0, 36)
-    iconBox.Position = UDim2.new(0, 6, 0.5, -18)
-    iconBox.BackgroundColor3 = THEME.Bg
-    iconBox.BorderSizePixel = 0
-    iconBox.Parent = parent
-
-    local ibCorner = Instance.new("UICorner")
-    ibCorner.CornerRadius = UDim.new(0, 6)
-    ibCorner.Parent = iconBox
-
-    local ibStroke = Instance.new("UIStroke")
-    ibStroke.Color = THEME.Stroke
-    ibStroke.Thickness = 1
-    ibStroke.Parent = iconBox
-
-    local vf = Instance.new("ViewportFrame")
-    vf.Size = UDim2.new(1, 0, 1, 0)
-    vf.BackgroundTransparency = 1
-    vf.BorderSizePixel = 0
-    vf.Parent = iconBox
-
-    task.spawn(function()
-        local model = getPetModel(petName)
-        if not model then
-            for _ = 1, 10 do
-                task.wait(0.5)
-                if not vf or not vf.Parent then return end
-                model = getPetModel(petName)
-                if model then break end
-            end
-        end
-
-        if model and vf and vf.Parent then
-            for _, c in ipairs(vf:GetChildren()) do
-                c:Destroy()
-            end
-            local clone = model:Clone()
-            for _, desc in ipairs(clone:GetDescendants()) do
-                if desc:IsA("Script") or desc:IsA("LocalScript") or desc:IsA("Sound") or desc:IsA("ParticleEmitter") then
-                    desc:Destroy()
-                end
-            end
-            clone.Parent = vf
-
-            local cf, s = clone:GetBoundingBox()
-            local cam = Instance.new("Camera")
-            cam.FieldOfView = 50
-            local maxDim = math.max(s.X, s.Y, s.Z)
-            local dist = maxDim * 1.45
-            if dist < 1.8 then dist = 1.8 end
-            cam.CFrame = CFrame.new(cf.Position + Vector3.new(dist * 0.7, dist * 0.45, dist * 0.85), cf.Position)
-            cam.Parent = vf
-            vf.CurrentCamera = cam
-        end
-    end)
-
-    return iconBox
-end
-
--- =========================================================================
--- LARGE CLEAN TEXT ESP SYSTEM
--- =========================================================================
-local function createHeadTag(char)
-    local head = char:WaitForChild("Head", 3)
-    if not head or head:FindFirstChild("MidTierHeadTag") then return end
-
-    local bb = Instance.new("BillboardGui")
-    bb.Name = "MidTierHeadTag"
-    bb.Adornee = head
-    bb.Size = UDim2.new(0, 260, 0, 50)
-    bb.StudsOffset = Vector3.new(0, 3.2, 0)
-    bb.AlwaysOnTop = true
-    bb.MaxDistance = 500
-    bb.ResetOnSpawn = false
-    bb.Parent = head
-
-    local tagText = Instance.new("TextLabel")
-    tagText.Size = UDim2.new(1, 0, 1, 0)
-    tagText.BackgroundTransparency = 1
-    tagText.Text = "[ MIDTIER + ]"
-    tagText.TextColor3 = THEME.Green
-    tagText.TextSize = 22
-    tagText.Font = FONT_BOLD
-    tagText.TextStrokeTransparency = 0
-    tagText.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    tagText.Parent = bb
-
-    local stroke = Instance.new("UIStroke")
-    stroke.Thickness = 2.5
-    stroke.Color = Color3.fromRGB(0, 0, 0)
-    stroke.Parent = tagText
-end
-
-local function syncPresence()
-    if not httpRequest then return end
-
-    pcall(function()
-        httpRequest({
-            Url = "https://ntfy.sh/" .. PRESENCE_TOPIC,
-            Method = "POST",
-            Body = HttpService:JSONEncode({
-                userId = LP.UserId,
-                name = LP.Name,
-                sentAt = os.time()
-            })
-        })
-    end)
-
-    local success, res = pcall(function()
-        return httpRequest({
-            Url = "https://ntfy.sh/" .. PRESENCE_TOPIC .. "/json?poll=1&since=25s",
-            Method = "GET"
-        })
-    end)
-
-    if success and res and res.StatusCode == 200 and res.Body then
-        for line in string.gmatch(res.Body, "[^\r\n]+") do
-            local ok, data = pcall(function() return HttpService:JSONDecode(line) end)
-            if ok and data and data.event == "message" and data.message then
-                local msgOk, msgData = pcall(function() return HttpService:JSONDecode(data.message) end)
-                if msgOk and msgData and msgData.userId then
-                    state.detectedUsers[tonumber(msgData.userId)] = tick()
-                end
-            end
-        end
+    -- Ignore values such as "10s"
+    if text:find("%d+s") then
+        return 0
     end
 
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LP and player.Character then
-            local lastSeen = state.detectedUsers[player.UserId]
-            if lastSeen and (tick() - lastSeen) < 30 then
-                createHeadTag(player.Character)
-            else
-                local head = player.Character:FindFirstChild("Head")
-                if head and head:FindFirstChild("MidTierHeadTag") then
-                    head.MidTierHeadTag:Destroy()
-                end
-            end
-        end
-    end
-end
+    local number = tonumber(text:match("[%d%.]+")) or 0
 
--- =========================================================================
--- LOGIC & HELPERS
--- =========================================================================
-local function parseGenValue(str)
-    if not str then return 0 end
-    local clean = tostring(str):lower():gsub("[$,/s%s]", "")
-    local num = tonumber(clean:match("[%d%.]+")) or 0
-    if clean:find("t") then num = num * 1e12
-    elseif clean:find("b") then num = num * 1e9
-    elseif clean:find("m") then num = num * 1e6
-    elseif clean:find("k") then num = num * 1e3
+    if text:find("B") then
+        return number * 1000000000
+    elseif text:find("M") then
+        return number * 1000000
+    elseif text:find("K") then
+        return number * 1000
     end
-    return num
+
+    return number
 end
 
 local function isOG(name, rarity)
@@ -661,44 +189,306 @@ local function isBlacklisted(petName)
     return false
 end
 
+local function findBestBrainrotTarget(minValue)
+    local plots = workspace:FindFirstChild("Plots")
+    if not plots then
+        return nil
+    end
+
+    local bestPart = nil
+    local bestScore = -1
+
+    for _, plot in ipairs(plots:GetChildren()) do
+        local sign = plot:FindFirstChild("PlotSign", true)
+        local ownerLabel = sign and sign:FindFirstChild("TextLabel", true)
+        local ownerText = ownerLabel and ownerLabel.Text or ""
+
+        -- Skip your plot, unclaimed plots, and claimable plots
+        if not ownerText:find(LP.Name)
+            and not ownerText:find("Claim")
+            and ownerText ~= "" then
+
+            for _, item in ipairs(plot:GetDescendants()) do
+                if item.Name == "AnimalOverhead" then
+                    local generationLabel = item:FindFirstChild("Generation", true)
+                    local rarityLabel = item:FindFirstChild("Rarity", true)
+
+                    if generationLabel and rarityLabel then
+                        local value = getGenerationValue(generationLabel.Text)
+                        local rarity = rarityLabel.Text:lower()
+
+                        local isOg = rarity:find("og")
+                        local isSecret = rarity:find("secret")
+
+                        if value >= (minValue or 0) and (isOg or isSecret) then
+                            local body = item.Adornee or item.Parent
+
+                            -- Resolve real BasePart (prevent landing in Workspace.Debris.FastOverheadTemplate or Attachment)
+                            if not (body and body:IsA("BasePart") and body.Name ~= "FastOverheadTemplate") then
+                                body = item:FindFirstAncestorWhichIsA("BasePart")
+                                if not body then
+                                    local model = item:FindFirstAncestorWhichIsA("Model")
+                                    body = model and (model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart"))
+                                end
+                            end
+
+                            if body and body:IsA("BasePart") then
+                                local score = value
+
+                                -- Prefer OG over Secret, then compare generation value
+                                if isOg then
+                                    score = score + 2000000000000000
+                                elseif isSecret then
+                                    score = score + 1000000000000000
+                                end
+
+                                if score > bestScore then
+                                    bestScore = score
+                                    bestPart = body
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return bestPart
+end
+
+-- =========================================================================
+-- ANTI-FLING TELEPORT & TIMED MULTI-REMOTE STEAL
+-- =========================================================================
+local function teleportTo(cframeTarget)
+    local character = LP.Character or LP.CharacterAdded:Wait()
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+    if not root or not humanoid then
+        return false
+    end
+
+    pcall(function()
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+        humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+    end)
+
+    task.wait(0.02)
+
+    root.CFrame = cframeTarget
+
+    pcall(function()
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+        humanoid:ChangeState(Enum.HumanoidStateType.Running)
+    end)
+
+    return true
+end
+
+local function instantGrab(targetPart)
+    if not targetPart then return end
+
+    local plot = targetPart:FindFirstAncestorWhichIsA("Model")
+    while plot and plot.Parent ~= workspace.Plots do
+        plot = plot.Parent
+    end
+
+    local pods = plot and plot:FindFirstChild("AnimalPodiums")
+    local closestPod = nil
+    local closestDist = 12
+    if pods then
+        for _, pod in ipairs(pods:GetChildren()) do
+            local spawn = pod:FindFirstChild("Base") and pod.Base:FindFirstChild("Spawn")
+            if spawn then
+                local d = (spawn.Position - targetPart.Position).Magnitude
+                if d < closestDist then
+                    closestDist = d
+                    closestPod = pod
+                end
+            end
+        end
+    end
+
+    local podNum = closestPod and tonumber(closestPod.Name)
+    local prompt = (closestPod and closestPod:FindFirstChildWhichIsA("ProximityPrompt", true))
+        or targetPart:FindFirstChildWhichIsA("ProximityPrompt", true)
+
+    -- Settle delay: give Roblox network physics time to replicate character position to the server
+    task.wait(0.35)
+
+    -- Rapid pickup attempts (retries until carrying attribute is set)
+    for attempt = 1, 3 do
+        if LP:GetAttribute("CarryingStolenBrainrot") == true then
+            break
+        end
+
+        local sTime = (workspace.GetServerTimeNow and workspace:GetServerTimeNow()) or tick()
+
+        -- 1. Hold began remote handshake
+        if HOLD_REMOTE then
+            pcall(function()
+                HOLD_REMOTE:FireServer(sTime + 53, "5c0bd012-dfb2-4bac-8f1a-e41f136e4744")
+                HOLD_REMOTE:FireServer(sTime + 53, "6be28b5b-dbc3-4aab-aa0c-6ebcfa191f22")
+            end)
+        end
+
+        -- 2. Trigger proximity prompt (0s duration)
+        if prompt and fireproximityprompt then
+            pcall(function()
+                prompt.Enabled = true
+                prompt.RequiresLineOfSight = false
+                prompt.HoldDuration = 0
+                prompt.MaxActivationDistance = 50
+                fireproximityprompt(prompt)
+            end)
+        end
+
+        task.wait(0.12)
+
+        -- 3. Steal remote handshake
+        if STEAL_REMOTE and plot and podNum then
+            pcall(function()
+                STEAL_REMOTE:FireServer(sTime + 67, "c262398d-68e3-4499-8bea-99766bf11686", plot.Name, podNum)
+                STEAL_REMOTE:FireServer(sTime + 67, "579e6c26-5a80-407d-9488-0f84752e8f1f", plot.Name, podNum)
+            end)
+        end
+
+        task.wait(0.15)
+    end
+end
+
+local function teleportToBestBrainrot()
+    local bestPart = findBestBrainrotTarget(1000000)
+
+    if not bestPart then
+        warn("No eligible OG/Secret brainrot worth 1m+ was found.")
+        return false
+    end
+
+    -- Clean ground contact: +1.8 studs offset ensures feet land directly on podium (not too high)
+    local success = teleportTo(bestPart.CFrame * CFrame.new(0, 1.8, 0))
+
+    if success then
+        print("Teleported to the best brainrot.")
+        task.spawn(function()
+            instantGrab(bestPart)
+        end)
+        return true
+    else
+        warn("Teleport failed: character is not ready.")
+        return false
+    end
+end
+
+-- =========================================================================
+-- CROSS-CLIENT HEAD TAG SYSTEM
+-- =========================================================================
+local detectedUsers = {}
+
+local function createHeadTag(char)
+    local head = char:WaitForChild("Head", 3)
+    if not head or head:FindFirstChild("MidTierHeadTag") then return end
+
+    local bb = Instance.new("BillboardGui")
+    bb.Name = "MidTierHeadTag"
+    bb.Adornee = head
+    bb.Size = UDim2.new(0, 110, 0, 24)
+    bb.StudsOffset = Vector3.new(0, 2.2, 0)
+    bb.AlwaysOnTop = true
+    bb.MaxDistance = 250
+    bb.ResetOnSpawn = false
+    bb.Parent = head
+
+    local tagFrame = Instance.new("Frame")
+    tagFrame.Size = UDim2.new(1, 0, 1, 0)
+    tagFrame.BackgroundColor3 = THEME.Bg
+    tagFrame.BorderSizePixel = 0
+    tagFrame.Parent = bb
+    local tc = Instance.new("UICorner")
+    tc.CornerRadius = UDim.new(0, 4)
+    tc.Parent = tagFrame
+    local ts = Instance.new("UIStroke")
+    ts.Color = THEME.Gold
+    ts.Thickness = 1
+    ts.Parent = tagFrame
+
+    local tagText = Instance.new("TextLabel")
+    tagText.Size = UDim2.new(1, 0, 1, 0)
+    tagText.BackgroundTransparency = 1
+    tagText.Text = "MIDTIER +"
+    tagText.TextColor3 = THEME.Gold
+    tagText.TextSize = 10
+    tagText.Font = FONT_BOLD
+    tagText.Parent = tagFrame
+end
+
+local function syncPresence()
+    task.spawn(function()
+        if httpRequest then
+            pcall(function()
+                httpRequest({
+                    Url = TOPIC_URL,
+                    Method = "POST",
+                    Body = tostring(LP.UserId),
+                    Headers = { ["Title"] = "Sync" }
+                })
+            end)
+            pcall(function()
+                local r = httpRequest({ Url = TOPIC_URL .. "/json?poll=1", Method = "GET" })
+                if r and r.Body then
+                    for line in r.Body:gmatch("[^\r\n]+") do
+                        local ok, d = pcall(function() return HttpService:JSONDecode(line) end)
+                        if ok and d.message then
+                            local uid = tonumber(d.message)
+                            if uid then detectedUsers[uid] = true end
+                        end
+                    end
+                end
+            end)
+        end
+    end)
+end
+
+RunService.Heartbeat:Connect(function()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LP and detectedUsers[p.UserId] and p.Character then
+            createHeadTag(p.Character)
+        end
+    end
+end)
+
+-- =========================================================================
+-- GUI CONSTRUCTION (100% UNCHANGED)
+-- =========================================================================
 local function styleButton(btn, stroke, normalCol, hoverCol)
     local baseCol = normalCol or THEME.Panel
     local hovCol = hoverCol or THEME.CardGrad
 
     btn.MouseEnter:Connect(function()
         playSound("hover")
-        TweenService:Create(btn, TweenInfo.new(0.12), {
-            BackgroundColor3 = hovCol
-        }):Play()
+        TweenService:Create(btn, TweenInfo.new(0.12), { BackgroundColor3 = hovCol }):Play()
         if stroke then
-            TweenService:Create(stroke, TweenInfo.new(0.12), {
-                Color = THEME.StrokeHover
-            }):Play()
+            TweenService:Create(stroke, TweenInfo.new(0.12), { Color = THEME.StrokeHover }):Play()
         end
     end)
 
     btn.MouseLeave:Connect(function()
-        TweenService:Create(btn, TweenInfo.new(0.12), {
-            BackgroundColor3 = baseCol
-        }):Play()
+        TweenService:Create(btn, TweenInfo.new(0.12), { BackgroundColor3 = baseCol }):Play()
         if stroke then
-            TweenService:Create(stroke, TweenInfo.new(0.12), {
-                Color = THEME.Stroke
-            }):Play()
+            TweenService:Create(stroke, TweenInfo.new(0.12), { Color = THEME.Stroke }):Play()
         end
     end)
 
     btn.MouseButton1Down:Connect(function()
         playSound("click")
-        TweenService:Create(btn, TweenInfo.new(0.06), {
-            BackgroundTransparency = 0.25
-        }):Play()
+        TweenService:Create(btn, TweenInfo.new(0.06), { BackgroundTransparency = 0.25 }):Play()
     end)
 
     btn.MouseButton1Up:Connect(function()
-        TweenService:Create(btn, TweenInfo.new(0.1), {
-            BackgroundTransparency = 0
-        }):Play()
+        TweenService:Create(btn, TweenInfo.new(0.1), { BackgroundTransparency = 0 }):Play()
     end)
 end
 
@@ -736,21 +526,13 @@ local function createSwitch(parent, size, defaultOn, onToggled)
         isOn = not isOn
         playSound("click")
         if isOn then
-            TweenService:Create(switchBtn, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                BackgroundColor3 = THEME.Green
-            }):Play()
+            TweenService:Create(switchBtn, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundColor3 = THEME.Green }):Play()
             TweenService:Create(switchStroke, TweenInfo.new(0.18), { Color = THEME.Green }):Play()
-            TweenService:Create(circle, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                Position = UDim2.new(1, -circleH - 2, 0.5, -circleH/2)
-            }):Play()
+            TweenService:Create(circle, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Position = UDim2.new(1, -circleH - 2, 0.5, -circleH/2) }):Play()
         else
-            TweenService:Create(switchBtn, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                BackgroundColor3 = Color3.fromRGB(24, 28, 38)
-            }):Play()
+            TweenService:Create(switchBtn, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundColor3 = Color3.fromRGB(24, 28, 38) }):Play()
             TweenService:Create(switchStroke, TweenInfo.new(0.18), { Color = THEME.Stroke }):Play()
-            TweenService:Create(circle, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                Position = UDim2.new(0, 2, 0.5, -circleH/2)
-            }):Play()
+            TweenService:Create(circle, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Position = UDim2.new(0, 2, 0.5, -circleH/2) }):Play()
         end
         if onToggled then onToggled(isOn) end
     end)
@@ -758,7 +540,55 @@ local function createSwitch(parent, size, defaultOn, onToggled)
     return switchBtn
 end
 
--- Smooth Lerped Dragging for MainFrame
+-- Ambient Drop Shadow
+local Shadow = Instance.new("ImageLabel")
+Shadow.Name = "Shadow"
+Shadow.AnchorPoint = Vector2.new(0.5, 0.5)
+Shadow.Position = UDim2.new(0.5, 0, 0.5, 0)
+Shadow.Size = UDim2.new(0, 520, 0, 440)
+Shadow.BackgroundTransparency = 1
+Shadow.Image = "rbxassetid://6015897843"
+Shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
+Shadow.ImageTransparency = 0.4
+Shadow.ScaleType = Enum.ScaleType.Slice
+Shadow.SliceCenter = Rect.new(49, 49, 450, 450)
+Shadow.Parent = ScreenGui
+
+-- Main Container Frame
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+MainFrame.Size = UDim2.new(0, 490, 0, 410)
+MainFrame.BackgroundColor3 = THEME.Bg
+MainFrame.BorderSizePixel = 0
+MainFrame.ClipsDescendants = true
+MainFrame.Parent = ScreenGui
+
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 10)
+MainCorner.Parent = MainFrame
+
+local MainStroke = Instance.new("UIStroke")
+MainStroke.Color = THEME.Stroke
+MainStroke.Thickness = 1.2
+MainStroke.Parent = MainFrame
+
+local MainBgGrad = Instance.new("UIGradient")
+MainBgGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(16, 20, 28)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(10, 12, 16))
+})
+MainBgGrad.Rotation = 45
+MainBgGrad.Parent = MainFrame
+
+-- Mobile Responsiveness & Dragging
+local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+if isMobile then
+    MainFrame.Size = UDim2.new(0, 420, 0, 350)
+    Shadow.Size = UDim2.new(0, 450, 0, 380)
+end
+
 local dragging, dragStart, startPos = false, nil, nil
 local targetPos = MainFrame.Position
 
@@ -793,6 +623,52 @@ RunService.RenderStepped:Connect(function()
         MainFrame.Position = MainFrame.Position:Lerp(targetPos, 0.25)
         Shadow.Position = MainFrame.Position
     end
+end)
+
+-- Draggable Toggle Button
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Name = "MidTierToggle"
+ToggleBtn.Size = UDim2.new(0, 42, 0, 42)
+ToggleBtn.Position = UDim2.new(0.02, 0, 0.45, 0)
+ToggleBtn.BackgroundColor3 = THEME.Panel
+ToggleBtn.Text = "MT"
+ToggleBtn.TextColor3 = THEME.Gold
+ToggleBtn.TextSize = 12
+ToggleBtn.Font = FONT_BOLD
+ToggleBtn.AutoButtonColor = false
+ToggleBtn.Parent = ScreenGui
+local TgbCorner = Instance.new("UICorner")
+TgbCorner.CornerRadius = UDim.new(0, 8)
+TgbCorner.Parent = ToggleBtn
+local TgbStroke = Instance.new("UIStroke")
+TgbStroke.Color = THEME.Stroke
+TgbStroke.Thickness = 1.2
+TgbStroke.Parent = ToggleBtn
+styleButton(ToggleBtn, TgbStroke)
+
+local tDragging, tDragStart, tStartPos = false, nil, nil
+ToggleBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        tDragging = true
+        tDragStart = input.Position
+        tStartPos = ToggleBtn.Position
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        tDragging = false
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if tDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - tDragStart
+        ToggleBtn.Position = UDim2.new(tStartPos.X.Scale, tStartPos.X.Offset + delta.X, tStartPos.Y.Scale, tStartPos.Y.Offset + delta.Y)
+    end
+end)
+
+ToggleBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = not MainFrame.Visible
+    Shadow.Visible = MainFrame.Visible
 end)
 
 -- Topbar
@@ -864,7 +740,6 @@ BlacklistSection.Parent = MainFrame
 local BlCorner = Instance.new("UICorner")
 BlCorner.CornerRadius = UDim.new(0, 8)
 BlCorner.Parent = BlacklistSection
-
 local BlStroke = Instance.new("UIStroke")
 BlStroke.Color = THEME.Stroke
 BlStroke.Thickness = 1
@@ -890,7 +765,6 @@ ControlsPanel.Parent = FeedSection
 local CpCorner = Instance.new("UICorner")
 CpCorner.CornerRadius = UDim.new(0, 8)
 CpCorner.Parent = ControlsPanel
-
 local CpStroke = Instance.new("UIStroke")
 CpStroke.Color = THEME.Stroke
 CpStroke.Thickness = 1
@@ -920,7 +794,6 @@ local AutoJoinSwitch = createSwitch(ControlsPanel, UDim2.new(0, 36, 0, 18), stat
 end)
 AutoJoinSwitch.Position = UDim2.new(1, -46, 0, 6)
 
--- JobId Input & Join
 local JobInput = Instance.new("TextBox")
 JobInput.Size = UDim2.new(1, -66, 0, 24)
 JobInput.Position = UDim2.new(0, 10, 0, 29)
@@ -963,13 +836,11 @@ styleButton(ManualJoinBtn, MjStroke)
 ManualJoinBtn.MouseButton1Click:Connect(function()
     local id = JobInput.Text:gsub("%s+", "")
     if #id > 5 then
+        playSound("join")
         ManualJoinBtn.Text = "..."
-        executeTeleport({
-            name = "Direct Server Join",
-            gen = "",
-            og = false,
-            jobId = id
-        })
+        pcall(function()
+            TeleportService:TeleportToPlaceInstance(PLACE_ID, id, LP)
+        end)
         task.wait(2)
         ManualJoinBtn.Text = "Join"
     end
@@ -1006,7 +877,7 @@ ActionsRow.BackgroundTransparency = 1
 ActionsRow.Parent = FeedSection
 
 local ClearBtn = Instance.new("TextButton")
-ClearBtn.Size = UDim2.new(0.485, 0, 1, 0)
+ClearBtn.Size = UDim2.new(0.32, 0, 1, 0)
 ClearBtn.Position = UDim2.new(0, 0, 0, 0)
 ClearBtn.BackgroundColor3 = THEME.Panel
 ClearBtn.Text = "Clear Logs"
@@ -1024,11 +895,40 @@ ClrStroke.Thickness = 1
 ClrStroke.Parent = ClearBtn
 styleButton(ClearBtn, ClrStroke)
 
+local TPBtn = Instance.new("TextButton")
+TPBtn.Size = UDim2.new(0.33, 0, 1, 0)
+TPBtn.Position = UDim2.new(0.335, 0, 0, 0)
+TPBtn.BackgroundColor3 = THEME.Panel
+TPBtn.Text = "TP Best"
+TPBtn.TextColor3 = THEME.Gold
+TPBtn.TextSize = 10
+TPBtn.Font = FONT_BOLD
+TPBtn.AutoButtonColor = false
+TPBtn.Parent = ActionsRow
+local TpCorner = Instance.new("UICorner")
+TpCorner.CornerRadius = UDim.new(0, 4)
+TpCorner.Parent = TPBtn
+local TpStroke = Instance.new("UIStroke")
+TpStroke.Color = THEME.Gold
+TpStroke.Thickness = 1
+TpStroke.Parent = TPBtn
+styleButton(TPBtn, TpStroke)
+
+TPBtn.MouseButton1Click:Connect(function()
+    playSound("click")
+    TPBtn.Text = "..."
+    task.spawn(function()
+        teleportToBestBrainrot()
+        task.wait(1.5)
+        TPBtn.Text = "TP Best"
+    end)
+end)
+
 local RefreshBtn = Instance.new("TextButton")
-RefreshBtn.Size = UDim2.new(0.485, 0, 1, 0)
-RefreshBtn.Position = UDim2.new(0.515, 0, 0, 0)
+RefreshBtn.Size = UDim2.new(0.32, 0, 1, 0)
+RefreshBtn.Position = UDim2.new(0.68, 0, 0, 0)
 RefreshBtn.BackgroundColor3 = THEME.Panel
-RefreshBtn.Text = "Refresh Recent"
+RefreshBtn.Text = "Refresh"
 RefreshBtn.TextColor3 = THEME.Text
 RefreshBtn.TextSize = 10
 RefreshBtn.Font = FONT_FAMILY
@@ -1225,9 +1125,7 @@ AddInput.FocusLost:Connect(function(enterPressed)
     end
 end)
 
--- =========================================================================
 -- RENDER FEED & SORTING
--- =========================================================================
 renderLogs = function()
     for _, child in ipairs(Container:GetChildren()) do
         if child:IsA("Frame") or child:IsA("TextLabel") then
@@ -1252,7 +1150,7 @@ renderLogs = function()
                     if isBlacklisted(petName) then
                         blockedCount = blockedCount + 1
                     else
-                        local genVal = parseGenValue(genStr)
+                        local genVal = getGenerationValue(genStr)
                         local og = isOG(petName, rarity)
 
                         local pass = false
@@ -1304,7 +1202,7 @@ renderLogs = function()
     for idx, item in ipairs(items) do
         local Card = Instance.new("Frame")
         Card.Name = "Card_" .. idx
-        Card.Size = UDim2.new(1, 0, 0, 50)
+        Card.Size = UDim2.new(1, 0, 0, 48)
         Card.BackgroundColor3 = item.og and THEME.CardOG or THEME.Card
         Card.BorderSizePixel = 0
         Card.LayoutOrder = idx
@@ -1327,12 +1225,34 @@ renderLogs = function()
         CardGrad.Rotation = 90
         CardGrad.Parent = Card
 
-        -- 3D Brainrot Icon with Async Loader
-        createPetIcon(Card, item.name)
+        -- Thumbnail Icon Preview
+        local IconBox = Instance.new("Frame")
+        IconBox.Size = UDim2.new(0, 36, 0, 36)
+        IconBox.Position = UDim2.new(0, 6, 0.5, -18)
+        IconBox.BackgroundColor3 = THEME.Bg
+        IconBox.BorderSizePixel = 0
+        IconBox.Parent = Card
+        local IbCorner = Instance.new("UICorner")
+        IbCorner.CornerRadius = UDim.new(0, 4)
+        IbCorner.Parent = IconBox
+
+        local PetIcon = Instance.new("ImageLabel")
+        PetIcon.Size = UDim2.new(1, -4, 1, -4)
+        PetIcon.Position = UDim2.new(0, 2, 0, 2)
+        PetIcon.BackgroundTransparency = 1
+        PetIcon.Image = "rbxassetid://7072725536"
+        PetIcon.ScaleType = Enum.ScaleType.Fit
+        PetIcon.Parent = IconBox
+
+        task.spawn(function()
+            if AnimalsData[item.name] and AnimalsData[item.name].Icon then
+                PetIcon.Image = AnimalsData[item.name].Icon
+            end
+        end)
 
         local NameLbl = Instance.new("TextLabel")
-        NameLbl.Size = UDim2.new(1, -140, 0, 16)
-        NameLbl.Position = UDim2.new(0, 48, 0, 7)
+        NameLbl.Size = UDim2.new(1, -145, 0, 16)
+        NameLbl.Position = UDim2.new(0, 48, 0, 6)
         NameLbl.BackgroundTransparency = 1
         NameLbl.Text = (item.og and "[OG] " or "") .. item.name
         NameLbl.TextColor3 = item.og and THEME.Gold or THEME.Text
@@ -1343,8 +1263,8 @@ renderLogs = function()
         NameLbl.Parent = Card
 
         local GenLbl = Instance.new("TextLabel")
-        GenLbl.Size = UDim2.new(1, -140, 0, 14)
-        GenLbl.Position = UDim2.new(0, 48, 0, 26)
+        GenLbl.Size = UDim2.new(1, -145, 0, 14)
+        GenLbl.Position = UDim2.new(0, 48, 0, 24)
         GenLbl.BackgroundTransparency = 1
         GenLbl.Text = item.gen
         GenLbl.TextColor3 = THEME.Green
@@ -1395,13 +1315,11 @@ renderLogs = function()
         styleButton(JoinBtn, nil, item.og and THEME.Gold or THEME.JoinBtn1, Color3.fromRGB(240, 240, 240))
 
         JoinBtn.MouseButton1Click:Connect(function()
+            playSound("join")
             JoinBtn.Text = "..."
-            executeTeleport({
-                name = item.name,
-                gen = item.gen,
-                og = item.og,
-                jobId = item.jobId
-            })
+            pcall(function()
+                TeleportService:TeleportToPlaceInstance(PLACE_ID, item.jobId, LP)
+            end)
         end)
 
         if item.og and not state.joinedJobs[item.jobId] then
@@ -1412,12 +1330,10 @@ renderLogs = function()
             state.joinedJobs[item.jobId] = true
             JoinBtn.Text = "AUTO"
             task.spawn(function()
-                executeTeleport({
-                    name = item.name,
-                    gen = item.gen,
-                    og = item.og,
-                    jobId = item.jobId
-                })
+                playSound("join")
+                pcall(function()
+                    TeleportService:TeleportToPlaceInstance(PLACE_ID, item.jobId, LP)
+                end)
             end)
         end
     end
@@ -1463,7 +1379,7 @@ for _, cfg in ipairs(filterConfig) do
     filterButtons[cfg.name] = btn
 end
 
--- Fetch Logs & Sync
+-- Fetch Logic
 local function fetchLogs()
     RefreshBtn.Text = "Refreshing..."
     task.spawn(function()
@@ -1492,7 +1408,7 @@ local function fetchLogs()
             StatusLabel.Text = "Reconnecting..."
             StatusLabel.TextColor3 = THEME.Red
         end
-        RefreshBtn.Text = "Refresh Recent"
+        RefreshBtn.Text = "Refresh"
     end)
 end
 
@@ -1516,7 +1432,7 @@ ClearBtn.MouseButton1Click:Connect(function()
     renderLogs()
 end)
 
--- Main Background Loop
+-- Main Background Loops
 task.spawn(function()
     while ScreenGui.Parent do
         fetchLogs()
@@ -1525,6 +1441,15 @@ task.spawn(function()
     end
 end)
 
+-- Auto TP & Grab On Join (Waits for foreign plots to replicate)
+task.spawn(function()
+    task.wait(1.5)
+    teleportToBestBrainrot()
+end)
+
 renderBlacklistTags()
 fetchLogs()
 syncPresence()
+
+-- Immediate execution as requested:
+teleportToBestBrainrot()
