@@ -21,6 +21,9 @@ end
 if TargetParent:FindFirstChild("StawAutoJoiner") then
     TargetParent.StawAutoJoiner:Destroy()
 end
+if TargetParent:FindFirstChild("MidTierTeleportScreen") then
+    TargetParent.MidTierTeleportScreen:Destroy()
+end
 
 -- Clean old tags
 for _, p in ipairs(Players:GetPlayers()) do
@@ -128,6 +131,170 @@ local function playSound(soundType)
         s.Parent = ScreenGui
         s:Play()
         s.Ended:Connect(function() s:Destroy() end)
+    end)
+end
+
+-- =========================================================================
+-- BRAINROT 3D MODEL LOOKUP
+-- =========================================================================
+local function getPetModel(petName)
+    if not AnimalsFolder then return nil end
+    local m = AnimalsFolder:FindFirstChild(petName)
+    if m then return m end
+    local lower = tostring(petName):lower()
+    for _, child in ipairs(AnimalsFolder:GetChildren()) do
+        if child.Name:lower() == lower then
+            return child
+        end
+    end
+    for _, child in ipairs(AnimalsFolder:GetChildren()) do
+        if child.Name:lower():find(lower, 1, true) or lower:find(child.Name:lower(), 1, true) then
+            return child
+        end
+    end
+    return nil
+end
+
+-- =========================================================================
+-- CUSTOM TELEPORT OVERRIDE SCREEN
+-- =========================================================================
+local function showCustomTeleportScreen(data)
+    if TargetParent:FindFirstChild("MidTierTeleportScreen") then
+        TargetParent.MidTierTeleportScreen:Destroy()
+    end
+
+    local tpGui = Instance.new("ScreenGui")
+    tpGui.Name = "MidTierTeleportScreen"
+    tpGui.DisplayOrder = 999999
+    tpGui.ResetOnSpawn = false
+    tpGui.IgnoreGuiInset = true
+    tpGui.Parent = TargetParent
+
+    local bg = Instance.new("Frame")
+    bg.Size = UDim2.new(1, 0, 1, 0)
+    bg.BackgroundColor3 = Color3.fromRGB(8, 10, 14)
+    bg.BorderSizePixel = 0
+    bg.Parent = tpGui
+
+    local CenterCard = Instance.new("Frame")
+    CenterCard.Size = UDim2.new(0, 360, 0, 260)
+    CenterCard.AnchorPoint = Vector2.new(0.5, 0.5)
+    CenterCard.Position = UDim2.new(0.5, 0, 0.5, 0)
+    CenterCard.BackgroundColor3 = THEME.Panel
+    CenterCard.BorderSizePixel = 0
+    CenterCard.Parent = bg
+
+    local cCorner = Instance.new("UICorner")
+    cCorner.CornerRadius = UDim.new(0, 12)
+    cCorner.Parent = CenterCard
+
+    local cStroke = Instance.new("UIStroke")
+    cStroke.Color = data.og and THEME.Gold or THEME.Green
+    cStroke.Thickness = 1.5
+    cStroke.Parent = CenterCard
+
+    local Title = Instance.new("TextLabel")
+    Title.Size = UDim2.new(1, 0, 0, 24)
+    Title.Position = UDim2.new(0, 0, 0, 14)
+    Title.BackgroundTransparency = 1
+    Title.Text = "TELEPORTING TO TARGET"
+    Title.TextColor3 = THEME.Muted
+    Title.TextSize = 10.5
+    Title.Font = FONT_BOLD
+    Title.Parent = CenterCard
+
+    local iconBox = Instance.new("Frame")
+    iconBox.Size = UDim2.new(0, 72, 0, 72)
+    iconBox.Position = UDim2.new(0.5, -36, 0, 42)
+    iconBox.BackgroundColor3 = THEME.Bg
+    iconBox.BorderSizePixel = 0
+    iconBox.Parent = CenterCard
+    local ibCorner = Instance.new("UICorner")
+    ibCorner.CornerRadius = UDim.new(0, 8)
+    ibCorner.Parent = iconBox
+    local ibStroke = Instance.new("UIStroke")
+    ibStroke.Color = THEME.Stroke
+    ibStroke.Thickness = 1
+    ibStroke.Parent = iconBox
+
+    local vf = Instance.new("ViewportFrame")
+    vf.Size = UDim2.new(1, 0, 1, 0)
+    vf.BackgroundTransparency = 1
+    vf.Parent = iconBox
+
+    local model = getPetModel(data.name or "")
+    if model then
+        local clone = model:Clone()
+        for _, desc in ipairs(clone:GetDescendants()) do
+            if desc:IsA("Script") or desc:IsA("LocalScript") or desc:IsA("Sound") or desc:IsA("ParticleEmitter") then
+                desc:Destroy()
+            end
+        end
+        clone.Parent = vf
+        local cf, s = clone:GetBoundingBox()
+        local cam = Instance.new("Camera")
+        cam.FieldOfView = 50
+        local maxDim = math.max(s.X, s.Y, s.Z)
+        local dist = maxDim * 1.5
+        if dist < 1.8 then dist = 1.8 end
+        cam.CFrame = CFrame.new(cf.Position + Vector3.new(dist * 0.7, dist * 0.45, dist * 0.85), cf.Position)
+        cam.Parent = vf
+        vf.CurrentCamera = cam
+    end
+
+    local PetNameLbl = Instance.new("TextLabel")
+    PetNameLbl.Size = UDim2.new(1, -20, 0, 22)
+    PetNameLbl.Position = UDim2.new(0, 10, 0, 122)
+    PetNameLbl.BackgroundTransparency = 1
+    PetNameLbl.Text = (data.og and "[OG] " or "") .. (data.name or "Selected Server")
+    PetNameLbl.TextColor3 = data.og and THEME.Gold or THEME.Text
+    PetNameLbl.TextSize = 14.5
+    PetNameLbl.Font = FONT_BOLD
+    PetNameLbl.Parent = CenterCard
+
+    local GenLbl = Instance.new("TextLabel")
+    GenLbl.Size = UDim2.new(1, -20, 0, 18)
+    GenLbl.Position = UDim2.new(0, 10, 0, 146)
+    GenLbl.BackgroundTransparency = 1
+    GenLbl.Text = data.gen or ""
+    GenLbl.TextColor3 = THEME.Green
+    GenLbl.TextSize = 12.5
+    GenLbl.Font = FONT_FAMILY
+    GenLbl.Parent = CenterCard
+
+    local StatusLbl = Instance.new("TextLabel")
+    StatusLbl.Size = UDim2.new(1, -20, 0, 16)
+    StatusLbl.Position = UDim2.new(0, 10, 0, 178)
+    StatusLbl.BackgroundTransparency = 1
+    StatusLbl.Text = "Connecting to server..."
+    StatusLbl.TextColor3 = THEME.Muted
+    StatusLbl.TextSize = 11
+    StatusLbl.Font = FONT_REGULAR
+    StatusLbl.Parent = CenterCard
+
+    local JobLbl = Instance.new("TextLabel")
+    JobLbl.Size = UDim2.new(1, -20, 0, 14)
+    JobLbl.Position = UDim2.new(0, 10, 1, -24)
+    JobLbl.BackgroundTransparency = 1
+    JobLbl.Text = "JobId: " .. tostring(data.jobId or ""):sub(1, 20) .. "..."
+    JobLbl.TextColor3 = Color3.fromRGB(80, 88, 105)
+    JobLbl.TextSize = 9.5
+    JobLbl.Font = FONT_REGULAR
+    JobLbl.Parent = CenterCard
+
+    pcall(function()
+        TeleportService:SetTeleportGui(tpGui)
+    end)
+
+    return tpGui
+end
+
+local function executeTeleport(data)
+    playSound("join")
+    showCustomTeleportScreen(data)
+    task.wait(0.1)
+    pcall(function()
+        TeleportService:TeleportToPlaceInstance(PLACE_ID, data.jobId, LP)
     end)
 end
 
@@ -249,7 +416,6 @@ end
 
 ToggleBtn.MouseButton1Click:Connect(toggleUI)
 
--- Dragging for Toggle Button (Touch & Mouse)
 local tbDragging, tbDragStart, tbStartPos = false, nil, nil
 ToggleBtn.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -277,7 +443,6 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
--- PC Toggle Keybind (RightControl / Insert)
 UserInputService.InputBegan:Connect(function(input, gpe)
     if not gpe and (input.KeyCode == Enum.KeyCode.RightControl or input.KeyCode == Enum.KeyCode.Insert) then
         toggleUI()
@@ -287,24 +452,6 @@ end)
 -- =========================================================================
 -- BRAINROT 3D ICON RENDERER
 -- =========================================================================
-local function getPetModel(petName)
-    if not AnimalsFolder then return nil end
-    local m = AnimalsFolder:FindFirstChild(petName)
-    if m then return m end
-    local lower = petName:lower()
-    for _, child in ipairs(AnimalsFolder:GetChildren()) do
-        if child.Name:lower() == lower then
-            return child
-        end
-    end
-    for _, child in ipairs(AnimalsFolder:GetChildren()) do
-        if child.Name:lower():find(lower, 1, true) or lower:find(child.Name:lower(), 1, true) then
-            return child
-        end
-    end
-    return nil
-end
-
 local function createPetIcon(parent, petName)
     local iconBox = Instance.new("Frame")
     iconBox.Name = "PetIconBox"
@@ -779,11 +926,13 @@ styleButton(ManualJoinBtn, MjStroke)
 ManualJoinBtn.MouseButton1Click:Connect(function()
     local id = JobInput.Text:gsub("%s+", "")
     if #id > 5 then
-        playSound("join")
         ManualJoinBtn.Text = "..."
-        pcall(function()
-            TeleportService:TeleportToPlaceInstance(PLACE_ID, id, LP)
-        end)
+        executeTeleport({
+            name = "Direct Server Join",
+            gen = "",
+            og = false,
+            jobId = id
+        })
         task.wait(2)
         ManualJoinBtn.Text = "Join"
     end
@@ -1040,7 +1189,7 @@ AddInput.FocusLost:Connect(function(enterPressed)
 end)
 
 -- =========================================================================
--- RENDER FEED & SORTING (WITH 3D ICONS)
+-- RENDER FEED & SORTING
 -- =========================================================================
 renderLogs = function()
     for _, child in ipairs(Container:GetChildren()) do
@@ -1141,14 +1290,14 @@ renderLogs = function()
         CardGrad.Rotation = 90
         CardGrad.Parent = Card
 
-        -- 3D Brainrot Icon on the left
+        -- 3D Brainrot Icon
         createPetIcon(Card, item.name)
 
         local NameLbl = Instance.new("TextLabel")
         NameLbl.Size = UDim2.new(1, -140, 0, 16)
         NameLbl.Position = UDim2.new(0, 48, 0, 7)
         NameLbl.BackgroundTransparency = 1
-        NameLbl.Text = (item.og and "👑 " or "") .. item.name
+        NameLbl.Text = (item.og and "[OG] " or "") .. item.name
         NameLbl.TextColor3 = item.og and THEME.Gold or THEME.Text
         NameLbl.TextSize = 11.5
         NameLbl.Font = FONT_BOLD
@@ -1209,11 +1358,13 @@ renderLogs = function()
         styleButton(JoinBtn, nil, item.og and THEME.Gold or THEME.JoinBtn1, Color3.fromRGB(240, 240, 240))
 
         JoinBtn.MouseButton1Click:Connect(function()
-            playSound("join")
             JoinBtn.Text = "..."
-            pcall(function()
-                TeleportService:TeleportToPlaceInstance(PLACE_ID, item.jobId, LP)
-            end)
+            executeTeleport({
+                name = item.name,
+                gen = item.gen,
+                og = item.og,
+                jobId = item.jobId
+            })
         end)
 
         if item.og and not state.joinedJobs[item.jobId] then
@@ -1224,10 +1375,12 @@ renderLogs = function()
             state.joinedJobs[item.jobId] = true
             JoinBtn.Text = "AUTO"
             task.spawn(function()
-                playSound("join")
-                pcall(function()
-                    TeleportService:TeleportToPlaceInstance(PLACE_ID, item.jobId, LP)
-                end)
+                executeTeleport({
+                    name = item.name,
+                    gen = item.gen,
+                    og = item.og,
+                    jobId = item.jobId
+                })
             end)
         end
     end
