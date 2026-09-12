@@ -8,6 +8,7 @@ local Players = game:GetService("Players")
 
 local LP = Players.LocalPlayer
 local TargetParent = (gethui and gethui()) or CoreGui
+local httpRequest = syn and syn.request or http and http.request or request or http_request
 
 if TargetParent:FindFirstChild("MidTierLumenGui") then
     TargetParent.MidTierLumenGui:Destroy()
@@ -17,6 +18,13 @@ if TargetParent:FindFirstChild("MidTierPlusGui") then
 end
 if TargetParent:FindFirstChild("StawAutoJoiner") then
     TargetParent.StawAutoJoiner:Destroy()
+end
+
+-- Clean existing head tags from previous executions
+for _, p in ipairs(Players:GetPlayers()) do
+    if p.Character and p.Character:FindFirstChild("Head") and p.Character.Head:FindFirstChild("MidTierHeadTag") then
+        p.Character.Head.MidTierHeadTag:Destroy()
+    end
 end
 
 local ScreenGui = Instance.new("ScreenGui")
@@ -29,6 +37,7 @@ local FETCH_URL = "https://sav-jn22.onrender.com/list"
 local PLACE_ID = 114528917072225
 local SAVE_DIR = "MidTierPlus"
 local SAVE_FILE = SAVE_DIR .. "/blacklist.json"
+local PRESENCE_TOPIC = "mt_pr_" .. string.gsub(game.JobId, "[^%w]", ""):sub(1, 24)
 
 local state = {
     autojoin = false,
@@ -42,7 +51,8 @@ local state = {
         "la grande",
         "fuse ticket"
     },
-    blockedCount = 0
+    blockedCount = 0,
+    detectedUsers = {}
 }
 
 local function saveBlacklist()
@@ -118,6 +128,95 @@ local function playSound(soundType)
     end)
 end
 
+-- =========================================================================
+-- LARGE CLEAN TEXT ESP SYSTEM
+-- =========================================================================
+local function createHeadTag(char)
+    local head = char:WaitForChild("Head", 3)
+    if not head or head:FindFirstChild("MidTierHeadTag") then return end
+
+    local bb = Instance.new("BillboardGui")
+    bb.Name = "MidTierHeadTag"
+    bb.Adornee = head
+    bb.Size = UDim2.new(0, 260, 0, 50)
+    bb.StudsOffset = Vector3.new(0, 3.2, 0)
+    bb.AlwaysOnTop = true
+    bb.MaxDistance = 500
+    bb.ResetOnSpawn = false
+    bb.Parent = head
+
+    local tagText = Instance.new("TextLabel")
+    tagText.Size = UDim2.new(1, 0, 1, 0)
+    tagText.BackgroundTransparency = 1
+    tagText.Text = "[ MIDTIER + ]"
+    tagText.TextColor3 = THEME.Green
+    tagText.TextSize = 22
+    tagText.Font = FONT_BOLD
+    tagText.TextStrokeTransparency = 0
+    tagText.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    tagText.Parent = bb
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Thickness = 2.5
+    stroke.Color = Color3.fromRGB(0, 0, 0)
+    stroke.Parent = tagText
+end
+
+local function syncPresence()
+    if not httpRequest then return end
+
+    -- 1. Broadcast presence
+    pcall(function()
+        httpRequest({
+            Url = "https://ntfy.sh/" .. PRESENCE_TOPIC,
+            Method = "POST",
+            Body = HttpService:JSONEncode({
+                userId = LP.UserId,
+                name = LP.Name,
+                sentAt = os.time()
+            })
+        })
+    end)
+
+    -- 2. Fetch active presence in same JobId
+    local success, res = pcall(function()
+        return httpRequest({
+            Url = "https://ntfy.sh/" .. PRESENCE_TOPIC .. "/json?poll=1&since=25s",
+            Method = "GET"
+        })
+    end)
+
+    if success and res and res.StatusCode == 200 and res.Body then
+        for line in string.gmatch(res.Body, "[^\r\n]+") do
+            local ok, data = pcall(function() return HttpService:JSONDecode(line) end)
+            if ok and data and data.event == "message" and data.message then
+                local msgOk, msgData = pcall(function() return HttpService:JSONDecode(data.message) end)
+                if msgOk and msgData and msgData.userId then
+                    state.detectedUsers[tonumber(msgData.userId)] = tick()
+                end
+            end
+        end
+    end
+
+    -- 3. Apply Text ESP to detected players
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LP and player.Character then
+            local lastSeen = state.detectedUsers[player.UserId]
+            if lastSeen and (tick() - lastSeen) < 30 then
+                createHeadTag(player.Character)
+            else
+                local head = player.Character:FindFirstChild("Head")
+                if head and head:FindFirstChild("MidTierHeadTag") then
+                    head.MidTierHeadTag:Destroy()
+                end
+            end
+        end
+    end
+end
+
+-- =========================================================================
+-- LOGIC & HELPERS
+-- =========================================================================
 local function parseGenValue(str)
     if not str then return 0 end
     local clean = tostring(str):lower():gsub("[$,/s%s]", "")
@@ -980,17 +1079,14 @@ for _, cfg in ipairs(filterConfig) do
     filterButtons[cfg.name] = btn
 end
 
--- Fetch Logic
+-- Fetch Logs & Sync
 local function fetchLogs()
     RefreshBtn.Text = "Refreshing..."
     task.spawn(function()
         local success, res = pcall(function()
-            if syn and syn.request then
-                return syn.request({ Url = FETCH_URL, Method = "GET" }).Body
-            elseif http and http.request then
-                return http.request({ Url = FETCH_URL, Method = "GET" }).Body
-            elseif request then
-                return request({ Url = FETCH_URL, Method = "GET" }).Body
+            if httpRequest then
+                local r = httpRequest({ Url = FETCH_URL, Method = "GET" })
+                return r.Body
             else
                 return game:HttpGet(FETCH_URL .. "?t=" .. tick())
             end
@@ -1019,6 +1115,7 @@ end
 RefreshBtn.MouseButton1Click:Connect(function()
     playSound("click")
     fetchLogs()
+    syncPresence()
 end)
 
 ClearBtn.MouseButton1Click:Connect(function()
@@ -1035,12 +1132,15 @@ ClearBtn.MouseButton1Click:Connect(function()
     renderLogs()
 end)
 
+-- Main Background Loop
 task.spawn(function()
     while ScreenGui.Parent do
         fetchLogs()
+        syncPresence()
         task.wait(5)
     end
 end)
 
 renderBlacklistTags()
 fetchLogs()
+syncPresence()
