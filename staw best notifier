@@ -1,3 +1,8 @@
+-- Wait for game to finish loading for auto-executors
+if not game:IsLoaded() then
+    game.Loaded:Wait()
+end
+
 local TeleportService = game:GetService("TeleportService")
 local HttpService = game:GetService("HttpService")
 local UserInputService = game:GetService("UserInputService")
@@ -10,7 +15,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LP = Players.LocalPlayer
 local TargetParent = (gethui and gethui()) or CoreGui
 local httpRequest = syn and syn.request or http and http.request or request or http_request
-local AnimalsFolder = ReplicatedStorage:FindFirstChild("Models") and ReplicatedStorage.Models:FindFirstChild("Animals")
 
 if TargetParent:FindFirstChild("MidTierLumenGui") then
     TargetParent.MidTierLumenGui:Destroy()
@@ -135,19 +139,36 @@ local function playSound(soundType)
 end
 
 -- =========================================================================
--- BRAINROT 3D MODEL LOOKUP
+-- DYNAMIC ASSET & BRAINROT 3D MODEL LOOKUP
 -- =========================================================================
+local cachedAnimalsFolder = nil
+local function getAnimalsFolder()
+    if cachedAnimalsFolder and cachedAnimalsFolder.Parent then
+        return cachedAnimalsFolder
+    end
+    local models = ReplicatedStorage:FindFirstChild("Models") or ReplicatedStorage:WaitForChild("Models", 10)
+    if models then
+        local animals = models:FindFirstChild("Animals") or models:WaitForChild("Animals", 10)
+        if animals then
+            cachedAnimalsFolder = animals
+            return animals
+        end
+    end
+    return nil
+end
+
 local function getPetModel(petName)
-    if not AnimalsFolder then return nil end
-    local m = AnimalsFolder:FindFirstChild(petName)
+    local folder = getAnimalsFolder()
+    if not folder then return nil end
+    local m = folder:FindFirstChild(petName)
     if m then return m end
     local lower = tostring(petName):lower()
-    for _, child in ipairs(AnimalsFolder:GetChildren()) do
+    for _, child in ipairs(folder:GetChildren()) do
         if child.Name:lower() == lower then
             return child
         end
     end
-    for _, child in ipairs(AnimalsFolder:GetChildren()) do
+    for _, child in ipairs(folder:GetChildren()) do
         if child.Name:lower():find(lower, 1, true) or lower:find(child.Name:lower(), 1, true) then
             return child
         end
@@ -222,25 +243,36 @@ local function showCustomTeleportScreen(data)
     vf.BackgroundTransparency = 1
     vf.Parent = iconBox
 
-    local model = getPetModel(data.name or "")
-    if model then
-        local clone = model:Clone()
-        for _, desc in ipairs(clone:GetDescendants()) do
-            if desc:IsA("Script") or desc:IsA("LocalScript") or desc:IsA("Sound") or desc:IsA("ParticleEmitter") then
-                desc:Destroy()
+    task.spawn(function()
+        local model = getPetModel(data.name or "")
+        if not model then
+            for _ = 1, 8 do
+                task.wait(0.4)
+                if not vf or not vf.Parent then return end
+                model = getPetModel(data.name or "")
+                if model then break end
             end
         end
-        clone.Parent = vf
-        local cf, s = clone:GetBoundingBox()
-        local cam = Instance.new("Camera")
-        cam.FieldOfView = 50
-        local maxDim = math.max(s.X, s.Y, s.Z)
-        local dist = maxDim * 1.5
-        if dist < 1.8 then dist = 1.8 end
-        cam.CFrame = CFrame.new(cf.Position + Vector3.new(dist * 0.7, dist * 0.45, dist * 0.85), cf.Position)
-        cam.Parent = vf
-        vf.CurrentCamera = cam
-    end
+
+        if model and vf and vf.Parent then
+            local clone = model:Clone()
+            for _, desc in ipairs(clone:GetDescendants()) do
+                if desc:IsA("Script") or desc:IsA("LocalScript") or desc:IsA("Sound") or desc:IsA("ParticleEmitter") then
+                    desc:Destroy()
+                end
+            end
+            clone.Parent = vf
+            local cf, s = clone:GetBoundingBox()
+            local cam = Instance.new("Camera")
+            cam.FieldOfView = 50
+            local maxDim = math.max(s.X, s.Y, s.Z)
+            local dist = maxDim * 1.5
+            if dist < 1.8 then dist = 1.8 end
+            cam.CFrame = CFrame.new(cf.Position + Vector3.new(dist * 0.7, dist * 0.45, dist * 0.85), cf.Position)
+            cam.Parent = vf
+            vf.CurrentCamera = cam
+        end
+    end)
 
     local PetNameLbl = Instance.new("TextLabel")
     PetNameLbl.Size = UDim2.new(1, -20, 0, 22)
@@ -450,7 +482,7 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 end)
 
 -- =========================================================================
--- BRAINROT 3D ICON RENDERER
+-- BRAINROT 3D ICON RENDERER (WITH ASYNC STREAMING RETRY)
 -- =========================================================================
 local function createPetIcon(parent, petName)
     local iconBox = Instance.new("Frame")
@@ -476,35 +508,40 @@ local function createPetIcon(parent, petName)
     vf.BorderSizePixel = 0
     vf.Parent = iconBox
 
-    local model = getPetModel(petName)
-    if model then
-        local clone = model:Clone()
-        for _, desc in ipairs(clone:GetDescendants()) do
-            if desc:IsA("Script") or desc:IsA("LocalScript") or desc:IsA("Sound") or desc:IsA("ParticleEmitter") then
-                desc:Destroy()
+    task.spawn(function()
+        local model = getPetModel(petName)
+        if not model then
+            for _ = 1, 10 do
+                task.wait(0.5)
+                if not vf or not vf.Parent then return end
+                model = getPetModel(petName)
+                if model then break end
             end
         end
-        clone.Parent = vf
 
-        local cf, s = clone:GetBoundingBox()
-        local cam = Instance.new("Camera")
-        cam.FieldOfView = 50
-        local maxDim = math.max(s.X, s.Y, s.Z)
-        local dist = maxDim * 1.45
-        if dist < 1.8 then dist = 1.8 end
-        cam.CFrame = CFrame.new(cf.Position + Vector3.new(dist * 0.7, dist * 0.45, dist * 0.85), cf.Position)
-        cam.Parent = vf
-        vf.CurrentCamera = cam
-    else
-        local placeholder = Instance.new("TextLabel")
-        placeholder.Size = UDim2.new(1, 0, 1, 0)
-        placeholder.BackgroundTransparency = 1
-        placeholder.Text = "?"
-        placeholder.TextColor3 = THEME.Muted
-        placeholder.TextSize = 13
-        placeholder.Font = FONT_BOLD
-        placeholder.Parent = iconBox
-    end
+        if model and vf and vf.Parent then
+            for _, c in ipairs(vf:GetChildren()) do
+                c:Destroy()
+            end
+            local clone = model:Clone()
+            for _, desc in ipairs(clone:GetDescendants()) do
+                if desc:IsA("Script") or desc:IsA("LocalScript") or desc:IsA("Sound") or desc:IsA("ParticleEmitter") then
+                    desc:Destroy()
+                end
+            end
+            clone.Parent = vf
+
+            local cf, s = clone:GetBoundingBox()
+            local cam = Instance.new("Camera")
+            cam.FieldOfView = 50
+            local maxDim = math.max(s.X, s.Y, s.Z)
+            local dist = maxDim * 1.45
+            if dist < 1.8 then dist = 1.8 end
+            cam.CFrame = CFrame.new(cf.Position + Vector3.new(dist * 0.7, dist * 0.45, dist * 0.85), cf.Position)
+            cam.Parent = vf
+            vf.CurrentCamera = cam
+        end
+    end)
 
     return iconBox
 end
@@ -1290,7 +1327,7 @@ renderLogs = function()
         CardGrad.Rotation = 90
         CardGrad.Parent = Card
 
-        -- 3D Brainrot Icon
+        -- 3D Brainrot Icon with Async Loader
         createPetIcon(Card, item.name)
 
         local NameLbl = Instance.new("TextLabel")
