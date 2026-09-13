@@ -50,6 +50,7 @@ local FETCH_URL = "https://sav-jn22.onrender.com/list"
 local PLACE_ID = 114528917072225
 local SAVE_DIR = "MidTierPlus"
 local SAVE_FILE = SAVE_DIR .. "/blacklist.json"
+local SETTINGS_FILE = SAVE_DIR .. "/settings.json"
 local LAST_TARGET_FILE = SAVE_DIR .. "/last_target.json"
 local TOPIC_URL = "https://ntfy.sh/mt_pr_" .. tostring(game.JobId)
 
@@ -60,6 +61,7 @@ local STEAL_REMOTE = NetPackages and NetPackages:FindFirstChild("RE/5aa39ea1-0c6
 
 local state = {
     autojoin = false,
+    ogSoundEnabled = true,
     minFilter = 0,
     activeFilterBtn = "All",
     rawLogs = {},
@@ -67,11 +69,104 @@ local state = {
     joinedJobs = {},
     blacklistEnabled = true,
     blacklist = {
-        "la grande",
-        "fuse ticket"
+        { term = "la grande", min = 0 },
+        { term = "fuse ticket", min = 0 }
     },
     blockedCount = 0
 }
+
+local function getGenerationValue(text)
+    if not text then
+        return 0
+    end
+
+    -- Ignore values such as "10s"
+    if text:find("%d+s") then
+        return 0
+    end
+
+    local number = tonumber(text:match("[%d%.]+")) or 0
+    local upper = text:upper()
+
+    if upper:find("T") then
+        return number * 1000000000000
+    elseif upper:find("B") then
+        return number * 1000000000
+    elseif upper:find("M") then
+        return number * 1000000
+    elseif upper:find("K") then
+        return number * 1000
+    end
+
+    return number
+end
+
+local function formatValue(num)
+    if num >= 1e12 then
+        return (string.format("%.1fT", num / 1e12):gsub("%.0T", "T"))
+    elseif num >= 1e9 then
+        return (string.format("%.1fB", num / 1e9):gsub("%.0B", "B"))
+    elseif num >= 1e6 then
+        return (string.format("%.1fM", num / 1e6):gsub("%.0M", "M"))
+    elseif num >= 1e3 then
+        return (string.format("%.1fK", num / 1e3):gsub("%.0K", "K"))
+    end
+    return tostring(num)
+end
+
+local function parseBlacklistRule(input)
+    if type(input) == "table" then
+        return {
+            term = tostring(input.term or ""):lower():gsub("^%s+", ""):gsub("%s+$", ""),
+            min = tonumber(input.min) or 0
+        }
+    end
+
+    local raw = tostring(input or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    -- Only parse as price limit if explicit '<' or ' min ' is used
+    local namePart, numPart = raw:match("^(.-)%s*<%s*([%d%.]+%s*[kKmMbBtT]?%a*/?s?)$")
+    if not namePart then
+        namePart, numPart = raw:match("^(.-)%s+min%s+([%d%.]+%s*[kKmMbBtT]?%a*/?s?)$")
+    end
+
+    if namePart and namePart ~= "" and numPart and numPart ~= "" then
+        local val = getGenerationValue(numPart)
+        if val > 0 then
+            return {
+                term = namePart:gsub("^%s+", ""):gsub("%s+$", ""):lower(),
+                min = val
+            }
+        end
+    end
+
+    return {
+        term = raw:lower(),
+        min = 0
+    }
+end
+
+local function isBlacklisted(petName, genVal)
+    if not state.blacklistEnabled then return false end
+    local lower = tostring(petName or ""):lower()
+    -- OGs have no minimum and are never excluded
+    if lower:find("og", 1, true) then
+        return false
+    end
+    local gVal = tonumber(genVal) or 0
+
+    for _, rule in ipairs(state.blacklist) do
+        local r = parseBlacklistRule(rule)
+        if r.term ~= "" and lower:find(r.term, 1, true) then
+            if r.min == 0 then
+                return true
+            end
+            if gVal < r.min then
+                return true
+            end
+        end
+    end
+    return false
+end
 
 local function saveBlacklist()
     pcall(function()
@@ -90,7 +185,42 @@ local function loadBlacklist()
     if success and content then
         local decodeOk, data = pcall(function() return HttpService:JSONDecode(content) end)
         if decodeOk and type(data) == "table" then
-            state.blacklist = data
+            local parsedList = {}
+            for _, item in ipairs(data) do
+                local r = parseBlacklistRule(item)
+                -- Auto-repair legacy misparsed "los < 25" rule
+                if r.term == "los" and r.min == 25 then
+                    r = { term = "los 25", min = 0 }
+                end
+                table.insert(parsedList, r)
+            end
+            state.blacklist = parsedList
+        end
+    end
+end
+
+local function saveSettings()
+    pcall(function()
+        if not isfolder(SAVE_DIR) then makefolder(SAVE_DIR) end
+        local cfg = {
+            ogSoundEnabled = state.ogSoundEnabled,
+            autojoin = state.autojoin,
+            blacklistEnabled = state.blacklistEnabled
+        }
+        writefile(SETTINGS_FILE, HttpService:JSONEncode(cfg))
+    end)
+end
+
+local function loadSettings()
+    local success, content = pcall(function()
+        if isfile(SETTINGS_FILE) then return readfile(SETTINGS_FILE) end
+    end)
+    if success and content then
+        local ok, data = pcall(function() return HttpService:JSONDecode(content) end)
+        if ok and type(data) == "table" then
+            if data.ogSoundEnabled ~= nil then state.ogSoundEnabled = data.ogSoundEnabled end
+            if data.autojoin ~= nil then state.autojoin = data.autojoin end
+            if data.blacklistEnabled ~= nil then state.blacklistEnabled = data.blacklistEnabled end
         end
     end
 end
@@ -121,6 +251,7 @@ local function loadLastTarget()
 end
 
 loadBlacklist()
+loadSettings()
 
 local THEME = {
     Bg = Color3.fromRGB(11, 13, 18),
@@ -146,6 +277,10 @@ local FONT_REGULAR = Enum.Font.Gotham
 
 local function playSound(soundType)
     task.spawn(function()
+        if soundType == "og" and not state.ogSoundEnabled then
+            return
+        end
+
         local s = Instance.new("Sound")
         s.Volume = 0.35
         if soundType == "hover" then
@@ -381,53 +516,19 @@ local function executeTeleport(data)
     end)
 end
 
--- =========================================================================
--- VALUE PARSING & TARGET FINDER METHOD
--- =========================================================================
-local function getGenerationValue(text)
-    if not text then
-        return 0
-    end
-
-    -- Ignore values such as "10s"
-    if text:find("%d+s") then
-        return 0
-    end
-
-    local number = tonumber(text:match("[%d%.]+")) or 0
-
-    if text:find("B") then
-        return number * 1000000000
-    elseif text:find("M") then
-        return number * 1000000
-    elseif text:find("K") then
-        return number * 1000
-    end
-
-    return number
-end
-
 local function isOG(name, rarity)
     local n = tostring(name or ""):lower()
     local r = tostring(rarity or ""):lower()
     return n:find("og") ~= nil or r:find("og") ~= nil
 end
 
-local function isBlacklisted(petName)
-    if not state.blacklistEnabled then return false end
-    local lower = tostring(petName or ""):lower()
-    for _, term in ipairs(state.blacklist) do
-        if term ~= "" and lower:find(term:lower(), 1, true) then
-            return true
-        end
-    end
-    return false
-end
-
+-- =========================================================================
+-- VALUE PARSING & TARGET FINDER (NEVER TELEPORT TO FUSE TICKETS)
+-- =========================================================================
 local function findBestBrainrotTarget(minValue)
     local plots = workspace:FindFirstChild("Plots")
     if not plots then
-        return nil
+        return nil, nil
     end
 
     local bestPart = nil
@@ -446,6 +547,11 @@ local function findBestBrainrotTarget(minValue)
 
             for _, item in ipairs(plot:GetDescendants()) do
                 if item.Name == "AnimalOverhead" then
+                    local stolenLabel = item:FindFirstChild("Stolen", true)
+                    if stolenLabel and stolenLabel.Visible == true then
+                        continue
+                    end
+
                     local generationLabel = item:FindFirstChild("Generation", true)
                     local rarityLabel = item:FindFirstChild("Rarity", true)
                     local nameLabel = item:FindFirstChild("DisplayName", true)
@@ -453,11 +559,27 @@ local function findBestBrainrotTarget(minValue)
                     if generationLabel and rarityLabel then
                         local value = getGenerationValue(generationLabel.Text)
                         local rarity = rarityLabel.Text:lower()
+                        local petName = (nameLabel and nameLabel.Text) or "Brainrot"
+                        local petLower = petName:lower()
 
-                        local isOg = rarity:find("og")
-                        local isSecret = rarity:find("secret")
+                        local parentModel = item:FindFirstAncestorWhichIsA("Model")
+                        local modelLower = (parentModel and parentModel.Name or ""):lower()
 
-                        if value >= (minValue or 0) and (isOg or isSecret) then
+                        -- NEVER TELEPORT TO FUSE TICKETS WHATSOEVER
+                        if petLower:find("ticket") or petLower:find("fuse") or modelLower:find("ticket") or modelLower:find("fuse") then
+                            continue
+                        end
+
+                        local isOg = rarity:find("og") ~= nil or petLower:find("og") ~= nil or isOG(petName, rarity)
+                        local isSecret = rarity:find("secret") ~= nil
+
+                        -- Custom exclusions (OGs have no min and are never blocked)
+                        if not isOg and isBlacklisted(petName, value) then
+                            continue
+                        end
+
+                        -- OGs have NO min requirement! (Secrets still respect minValue)
+                        if (isOg or value >= (minValue or 0)) and (isOg or isSecret) then
                             local body = item.Adornee or item.Parent
 
                             -- Resolve real BasePart (prevent landing in Workspace.Debris.FastOverheadTemplate or Attachment)
@@ -483,7 +605,7 @@ local function findBestBrainrotTarget(minValue)
                                     bestScore = score
                                     bestPart = body
                                     bestData = {
-                                        name = nameLabel and nameLabel.Text or "Brainrot",
+                                        name = petName,
                                         gen = generationLabel.Text,
                                         og = isOg ~= nil
                                     }
@@ -661,46 +783,52 @@ task.spawn(function()
 end)
 
 -- =========================================================================
--- CROSS-CLIENT HEAD TAG SYSTEM
+-- CLEAN OVERHEAD HEAD TAG SYSTEM (LOCAL PLAYER & VERIFIED PEERS)
 -- =========================================================================
 local detectedUsers = {}
 
 local function createHeadTag(char)
+    if not char then return end
     local head = char:WaitForChild("Head", 3)
-    if not head or head:FindFirstChild("MidTierHeadTag") then return end
+    if not head then return end
+    if head:FindFirstChild("MidTierHeadTag") then
+        head.MidTierHeadTag:Destroy()
+    end
 
     local bb = Instance.new("BillboardGui")
     bb.Name = "MidTierHeadTag"
     bb.Adornee = head
-    bb.Size = UDim2.new(0, 110, 0, 24)
-    bb.StudsOffset = Vector3.new(0, 2.2, 0)
+    bb.Size = UDim2.new(0, 240, 0, 44)
+    bb.StudsOffset = Vector3.new(0, 3.0, 0)
     bb.AlwaysOnTop = true
-    bb.MaxDistance = 250
+    bb.MaxDistance = 500
     bb.ResetOnSpawn = false
     bb.Parent = head
-
-    local tagFrame = Instance.new("Frame")
-    tagFrame.Size = UDim2.new(1, 0, 1, 0)
-    tagFrame.BackgroundColor3 = THEME.Bg
-    tagFrame.BorderSizePixel = 0
-    tagFrame.Parent = bb
-    local tc = Instance.new("UICorner")
-    tc.CornerRadius = UDim.new(0, 4)
-    tc.Parent = tagFrame
-    local ts = Instance.new("UIStroke")
-    ts.Color = THEME.Gold
-    ts.Thickness = 1
-    ts.Parent = tagFrame
 
     local tagText = Instance.new("TextLabel")
     tagText.Size = UDim2.new(1, 0, 1, 0)
     tagText.BackgroundTransparency = 1
-    tagText.Text = "MIDTIER +"
+    tagText.Text = "[ MIDTIER + ]"
     tagText.TextColor3 = THEME.Gold
-    tagText.TextSize = 10
+    tagText.TextSize = 22
     tagText.Font = FONT_BOLD
-    tagText.Parent = tagFrame
+    tagText.TextStrokeTransparency = 0
+    tagText.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    tagText.Parent = bb
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Thickness = 2
+    stroke.Color = Color3.fromRGB(0, 0, 0)
+    stroke.Parent = tagText
 end
+
+if LP.Character then
+    createHeadTag(LP.Character)
+end
+LP.CharacterAdded:Connect(function(char)
+    task.wait(0.25)
+    createHeadTag(char)
+end)
 
 local function syncPresence()
     task.spawn(function()
@@ -730,15 +858,20 @@ local function syncPresence()
 end
 
 RunService.Heartbeat:Connect(function()
+    if LP.Character and LP.Character:FindFirstChild("Head") and not LP.Character.Head:FindFirstChild("MidTierHeadTag") then
+        createHeadTag(LP.Character)
+    end
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= LP and detectedUsers[p.UserId] and p.Character then
-            createHeadTag(p.Character)
+            if not p.Character:FindFirstChild("Head") or not p.Character.Head:FindFirstChild("MidTierHeadTag") then
+                createHeadTag(p.Character)
+            end
         end
     end
 end)
 
 -- =========================================================================
--- GUI CONSTRUCTION (100% PRESERVED DESIGN)
+-- GUI CONSTRUCTION (100% PRESERVED THEME & CONTROLS)
 -- =========================================================================
 local function styleButton(btn, stroke, normalCol, hoverCol)
     local baseCol = normalCol or THEME.Panel
@@ -970,7 +1103,7 @@ local VerLabel = Instance.new("TextLabel")
 VerLabel.Size = UDim2.new(0, 45, 1, 0)
 VerLabel.Position = UDim2.new(0, 95, 0, 1)
 VerLabel.BackgroundTransparency = 1
-VerLabel.Text = "v3.7"
+VerLabel.Text = "v4.0"
 VerLabel.TextColor3 = THEME.Muted
 VerLabel.TextSize = 10
 VerLabel.Font = FONT_REGULAR
@@ -1055,8 +1188,9 @@ CpGrad.Color = ColorSequence.new({
 CpGrad.Rotation = 90
 CpGrad.Parent = ControlsPanel
 
+-- Row 1: Auto Join & OG Sound Toggles
 local AutoJoinLbl = Instance.new("TextLabel")
-AutoJoinLbl.Size = UDim2.new(0, 140, 0, 20)
+AutoJoinLbl.Size = UDim2.new(0, 68, 0, 20)
 AutoJoinLbl.Position = UDim2.new(0, 10, 0, 5)
 AutoJoinLbl.BackgroundTransparency = 1
 AutoJoinLbl.Text = "AUTO JOIN"
@@ -1066,11 +1200,30 @@ AutoJoinLbl.Font = FONT_BOLD
 AutoJoinLbl.TextXAlignment = Enum.TextXAlignment.Left
 AutoJoinLbl.Parent = ControlsPanel
 
-local AutoJoinSwitch = createSwitch(ControlsPanel, UDim2.new(0, 36, 0, 18), state.autojoin, function(val)
+local AutoJoinSwitch = createSwitch(ControlsPanel, UDim2.new(0, 32, 0, 18), state.autojoin, function(val)
     state.autojoin = val
+    saveSettings()
 end)
-AutoJoinSwitch.Position = UDim2.new(1, -46, 0, 6)
+AutoJoinSwitch.Position = UDim2.new(0, 80, 0, 6)
 
+local OgSoundLbl = Instance.new("TextLabel")
+OgSoundLbl.Size = UDim2.new(0, 68, 0, 20)
+OgSoundLbl.Position = UDim2.new(0, 135, 0, 5)
+OgSoundLbl.BackgroundTransparency = 1
+OgSoundLbl.Text = "OG SOUND"
+OgSoundLbl.TextColor3 = THEME.Muted
+OgSoundLbl.TextSize = 9.5
+OgSoundLbl.Font = FONT_BOLD
+OgSoundLbl.TextXAlignment = Enum.TextXAlignment.Left
+OgSoundLbl.Parent = ControlsPanel
+
+local OgSoundSwitch = createSwitch(ControlsPanel, UDim2.new(0, 32, 0, 18), state.ogSoundEnabled, function(val)
+    state.ogSoundEnabled = val
+    saveSettings()
+end)
+OgSoundSwitch.Position = UDim2.new(1, -44, 0, 6)
+
+-- Row 2: Specific JobId Input & Join Button
 local JobInput = Instance.new("TextBox")
 JobInput.Size = UDim2.new(1, -66, 0, 24)
 JobInput.Position = UDim2.new(0, 10, 0, 29)
@@ -1243,7 +1396,9 @@ ListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     Container.CanvasSize = UDim2.new(0, 0, 0, ListLayout.AbsoluteContentSize.Y + 8)
 end)
 
--- Blacklist Controls
+-- =========================================================================
+-- BLACKLIST & THRESHOLD DROPDOWN CONTROLS
+-- =========================================================================
 local BlHeader = Instance.new("Frame")
 BlHeader.Size = UDim2.new(1, 0, 0, 24)
 BlHeader.BackgroundTransparency = 1
@@ -1253,7 +1408,7 @@ local BlTitle = Instance.new("TextLabel")
 BlTitle.Size = UDim2.new(1, -14, 1, 0)
 BlTitle.Position = UDim2.new(0, 7, 0, 0)
 BlTitle.BackgroundTransparency = 1
-BlTitle.Text = "BLACKLIST"
+BlTitle.Text = "EXCLUSIONS"
 BlTitle.TextColor3 = THEME.Muted
 BlTitle.TextSize = 9.5
 BlTitle.Font = FONT_BOLD
@@ -1278,7 +1433,7 @@ local BltLbl = Instance.new("TextLabel")
 BltLbl.Size = UDim2.new(1, -42, 1, 0)
 BltLbl.Position = UDim2.new(0, 6, 0, 0)
 BltLbl.BackgroundTransparency = 1
-BltLbl.Text = "Brainrots"
+BltLbl.Text = "Filter Status"
 BltLbl.TextColor3 = THEME.Text
 BltLbl.TextSize = 9.5
 BltLbl.Font = FONT_FAMILY
@@ -1288,44 +1443,54 @@ BltLbl.Parent = BlToggleRow
 local renderLogs
 local BlSwitch = createSwitch(BlToggleRow, UDim2.new(0, 30, 0, 16), state.blacklistEnabled, function(val)
     state.blacklistEnabled = val
+    saveSettings()
     if renderLogs then renderLogs() end
 end)
 BlSwitch.Position = UDim2.new(1, -34, 0.5, -8)
 
-local AddInput = Instance.new("TextBox")
-AddInput.Size = UDim2.new(1, -14, 0, 22)
-AddInput.Position = UDim2.new(0, 7, 0, 52)
-AddInput.BackgroundColor3 = THEME.Bg
-AddInput.Text = ""
-AddInput.PlaceholderText = "+ Add blacklist..."
-AddInput.PlaceholderColor3 = Color3.fromRGB(80, 85, 100)
-AddInput.TextColor3 = THEME.Text
-AddInput.TextSize = 9.5
-AddInput.Font = FONT_REGULAR
-AddInput.ClearTextOnFocus = false
-AddInput.Parent = BlacklistSection
-local AiCorner = Instance.new("UICorner")
-AiCorner.CornerRadius = UDim.new(0, 4)
-AiCorner.Parent = AddInput
-local AiStroke = Instance.new("UIStroke")
-AiStroke.Color = THEME.Stroke
-AiStroke.Thickness = 1
-AiStroke.Parent = AddInput
+-- Input: Brainrot Name (Preserves full name e.g. "Los 25")
+local NameInput = Instance.new("TextBox")
+NameInput.Size = UDim2.new(1, -44, 0, 24)
+NameInput.Position = UDim2.new(0, 7, 0, 52)
+NameInput.BackgroundColor3 = THEME.Bg
+NameInput.Text = ""
+NameInput.PlaceholderText = "Pet name (e.g. Los 25)..."
+NameInput.PlaceholderColor3 = Color3.fromRGB(80, 85, 100)
+NameInput.TextColor3 = THEME.Text
+NameInput.TextSize = 9.5
+NameInput.Font = FONT_REGULAR
+NameInput.ClearTextOnFocus = false
+NameInput.Parent = BlacklistSection
+local NiCorner = Instance.new("UICorner")
+NiCorner.CornerRadius = UDim.new(0, 4)
+NiCorner.Parent = NameInput
+local NiStroke = Instance.new("UIStroke")
+NiStroke.Color = THEME.Stroke
+NiStroke.Thickness = 1
+NiStroke.Parent = NameInput
 
-local BlockedCountLbl = Instance.new("TextLabel")
-BlockedCountLbl.Size = UDim2.new(1, -14, 0, 18)
-BlockedCountLbl.Position = UDim2.new(0, 7, 1, -20)
-BlockedCountLbl.BackgroundTransparency = 1
-BlockedCountLbl.Text = "Blocked: 0"
-BlockedCountLbl.TextColor3 = THEME.Muted
-BlockedCountLbl.TextSize = 9.5
-BlockedCountLbl.Font = FONT_REGULAR
-BlockedCountLbl.TextXAlignment = Enum.TextXAlignment.Left
-BlockedCountLbl.Parent = BlacklistSection
+local AddBtn = Instance.new("TextButton")
+AddBtn.Size = UDim2.new(0, 26, 0, 24)
+AddBtn.Position = UDim2.new(1, -33, 0, 52)
+AddBtn.BackgroundColor3 = THEME.BtnGrad1
+AddBtn.Text = "+"
+AddBtn.TextColor3 = THEME.Text
+AddBtn.TextSize = 13
+AddBtn.Font = FONT_BOLD
+AddBtn.AutoButtonColor = false
+AddBtn.Parent = BlacklistSection
+local AbCorner = Instance.new("UICorner")
+AbCorner.CornerRadius = UDim.new(0, 4)
+AbCorner.Parent = AddBtn
+local AbStroke = Instance.new("UIStroke")
+AbStroke.Color = THEME.Stroke
+AbStroke.Thickness = 1
+AbStroke.Parent = AddBtn
+styleButton(AddBtn, AbStroke)
 
 local TagScroll = Instance.new("ScrollingFrame")
-TagScroll.Size = UDim2.new(1, -14, 1, -102)
-TagScroll.Position = UDim2.new(0, 7, 0, 78)
+TagScroll.Size = UDim2.new(1, -14, 1, -108)
+TagScroll.Position = UDim2.new(0, 7, 0, 82)
 TagScroll.BackgroundTransparency = 1
 TagScroll.ScrollBarThickness = 2
 TagScroll.ScrollBarImageColor3 = Color3.fromRGB(45, 52, 70)
@@ -1340,14 +1505,57 @@ TagLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     TagScroll.CanvasSize = UDim2.new(0, 0, 0, TagLayout.AbsoluteContentSize.Y + 4)
 end)
 
+local BlockedCountLbl = Instance.new("TextLabel")
+BlockedCountLbl.Size = UDim2.new(1, -14, 0, 18)
+BlockedCountLbl.Position = UDim2.new(0, 7, 1, -20)
+BlockedCountLbl.BackgroundTransparency = 1
+BlockedCountLbl.Text = "Blocked: 0"
+BlockedCountLbl.TextColor3 = THEME.Muted
+BlockedCountLbl.TextSize = 9.5
+BlockedCountLbl.Font = FONT_REGULAR
+BlockedCountLbl.TextXAlignment = Enum.TextXAlignment.Left
+BlockedCountLbl.Parent = BlacklistSection
+
+-- =========================================================================
+-- DROPDOWN CUSTOMIZER FOR EACH EXCLUDED PET
+-- =========================================================================
+local activePopup = nil
+local activeCatcher = nil
+
+local function closeActivePopup()
+    if activePopup then
+        activePopup:Destroy()
+        activePopup = nil
+    end
+    if activeCatcher then
+        activeCatcher:Destroy()
+        activeCatcher = nil
+    end
+end
+
+local minPresets = {
+    { label = "Block All", val = 0, isRed = true },
+    { label = "50M Min", val = 50e6 },
+    { label = "100M Min", val = 100e6 },
+    { label = "150M Min", val = 150e6 },
+    { label = "500M Min", val = 500e6 },
+    { label = "1B Min", val = 1e9, isGold = true },
+    { label = "1.2B Min", val = 1.2e9, isGold = true },
+    { label = "1.6B Min", val = 1.6e9, isGold = true },
+    { label = "2B Min", val = 2e9, isGold = true }
+}
+
 local function renderBlacklistTags()
+    closeActivePopup()
     for _, child in ipairs(TagScroll:GetChildren()) do
         if child:IsA("Frame") then child:Destroy() end
     end
 
-    for idx, term in ipairs(state.blacklist) do
+    for idx, rule in ipairs(state.blacklist) do
+        local r = parseBlacklistRule(rule)
         local tagRow = Instance.new("Frame")
-        tagRow.Size = UDim2.new(1, -4, 0, 20)
+        tagRow.Name = "Excl_" .. idx
+        tagRow.Size = UDim2.new(1, -4, 0, 26)
         tagRow.BackgroundColor3 = THEME.Bg
         tagRow.BorderSizePixel = 0
         tagRow.Parent = TagScroll
@@ -1360,21 +1568,43 @@ local function renderBlacklistTags()
         trStroke.Thickness = 1
         trStroke.Parent = tagRow
 
-        local tagText = Instance.new("TextLabel")
-        tagText.Size = UDim2.new(1, -22, 1, 0)
-        tagText.Position = UDim2.new(0, 6, 0, 0)
-        tagText.BackgroundTransparency = 1
-        tagText.Text = term
-        tagText.TextColor3 = THEME.Text
-        tagText.TextSize = 9.5
-        tagText.Font = FONT_FAMILY
-        tagText.TextXAlignment = Enum.TextXAlignment.Left
-        tagText.TextTruncate = Enum.TextTruncate.AtEnd
-        tagText.Parent = tagRow
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Size = UDim2.new(1, -98, 1, 0)
+        nameLabel.Position = UDim2.new(0, 7, 0, 0)
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Text = r.term
+        nameLabel.TextColor3 = THEME.Text
+        nameLabel.TextSize = 9.5
+        nameLabel.Font = FONT_BOLD
+        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+        nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+        nameLabel.Parent = tagRow
+
+        -- Small dropdown button for this excluded brainrot
+        local dropdownBtn = Instance.new("TextButton")
+        dropdownBtn.Size = UDim2.new(0, 68, 0, 20)
+        dropdownBtn.Position = UDim2.new(1, -90, 0.5, -10)
+        dropdownBtn.BackgroundColor3 = THEME.Panel
+        dropdownBtn.BorderSizePixel = 0
+        dropdownBtn.AutoButtonColor = false
+        dropdownBtn.Text = r.min == 0 and "Block All v" or ("< " .. formatValue(r.min) .. " v")
+        dropdownBtn.TextColor3 = r.min == 0 and Color3.fromRGB(245, 110, 110) or THEME.Gold
+        dropdownBtn.TextSize = 8.5
+        dropdownBtn.Font = FONT_BOLD
+        dropdownBtn.Parent = tagRow
+
+        local dbCorner = Instance.new("UICorner")
+        dbCorner.CornerRadius = UDim.new(0, 4)
+        dbCorner.Parent = dropdownBtn
+        local dbStroke = Instance.new("UIStroke")
+        dbStroke.Color = THEME.Stroke
+        dbStroke.Thickness = 1
+        dbStroke.Parent = dropdownBtn
+        styleButton(dropdownBtn, dbStroke)
 
         local delBtn = Instance.new("TextButton")
-        delBtn.Size = UDim2.new(0, 16, 0, 16)
-        delBtn.Position = UDim2.new(1, -18, 0.5, -8)
+        delBtn.Size = UDim2.new(0, 16, 0, 20)
+        delBtn.Position = UDim2.new(1, -18, 0.5, -10)
         delBtn.BackgroundTransparency = 1
         delBtn.Text = "x"
         delBtn.TextColor3 = THEME.Muted
@@ -1384,23 +1614,189 @@ local function renderBlacklistTags()
 
         delBtn.MouseButton1Click:Connect(function()
             playSound("click")
+            closeActivePopup()
             table.remove(state.blacklist, idx)
             saveBlacklist()
             renderBlacklistTags()
-            renderLogs()
+            if renderLogs then renderLogs() end
+        end)
+
+        -- Open dropdown menu for this specific item
+        dropdownBtn.MouseButton1Click:Connect(function()
+            playSound("click")
+            if activePopup and activePopup:GetAttribute("RowIndex") == idx then
+                closeActivePopup()
+                return
+            end
+            closeActivePopup()
+
+            -- Outside-click catcher overlay
+            activeCatcher = Instance.new("TextButton")
+            activeCatcher.Name = "DropdownCatcher"
+            activeCatcher.Size = UDim2.new(1, 0, 1, 0)
+            activeCatcher.BackgroundTransparency = 1
+            activeCatcher.Text = ""
+            activeCatcher.ZIndex = 119
+            activeCatcher.Parent = BlacklistSection
+            activeCatcher.MouseButton1Click:Connect(closeActivePopup)
+
+            -- Compute dynamic popup position
+            local rowY = tagRow.AbsolutePosition.Y - BlacklistSection.AbsolutePosition.Y
+            local popupH = 146
+            local posY = rowY + 28
+            if posY + popupH > BlacklistSection.AbsoluteSize.Y - 10 then
+                posY = math.max(4, rowY - popupH - 2)
+            end
+
+            local popup = Instance.new("Frame")
+            popup.Name = "LimitDropdownPopup"
+            popup:SetAttribute("RowIndex", idx)
+            popup.Size = UDim2.new(0, 132, 0, popupH)
+            popup.Position = UDim2.new(1, -6, 0, posY)
+            popup.AnchorPoint = Vector2.new(1, 0)
+            popup.BackgroundColor3 = THEME.Card
+            popup.BorderSizePixel = 0
+            popup.ZIndex = 120
+            popup.Parent = BlacklistSection
+            activePopup = popup
+
+            local pCorner = Instance.new("UICorner")
+            pCorner.CornerRadius = UDim.new(0, 6)
+            pCorner.Parent = popup
+            local pStroke = Instance.new("UIStroke")
+            pStroke.Color = THEME.StrokeHover
+            pStroke.Thickness = 1.2
+            pStroke.Parent = popup
+
+            local header = Instance.new("TextLabel")
+            header.Size = UDim2.new(1, -8, 0, 16)
+            header.Position = UDim2.new(0, 4, 0, 2)
+            header.BackgroundTransparency = 1
+            header.Text = "SET MIN LIMIT"
+            header.TextColor3 = THEME.Muted
+            header.TextSize = 8
+            header.Font = FONT_BOLD
+            header.ZIndex = 121
+            header.Parent = popup
+
+            local pScroll = Instance.new("ScrollingFrame")
+            pScroll.Size = UDim2.new(1, -6, 0, 96)
+            pScroll.Position = UDim2.new(0, 3, 0, 20)
+            pScroll.BackgroundTransparency = 1
+            pScroll.ScrollBarThickness = 2
+            pScroll.ScrollBarImageColor3 = Color3.fromRGB(45, 52, 70)
+            pScroll.ZIndex = 121
+            pScroll.Parent = popup
+
+            local pLayout = Instance.new("UIListLayout")
+            pLayout.FillDirection = Enum.FillDirection.Vertical
+            pLayout.Padding = UDim.new(0, 2)
+            pLayout.Parent = pScroll
+
+            local function applyValue(val)
+                playSound("click")
+                state.blacklist[idx].min = val
+                saveBlacklist()
+                if val == 0 then
+                    dropdownBtn.Text = "Block All v"
+                    dropdownBtn.TextColor3 = Color3.fromRGB(245, 110, 110)
+                else
+                    dropdownBtn.Text = "< " .. formatValue(val) .. " v"
+                    dropdownBtn.TextColor3 = THEME.Gold
+                end
+                closeActivePopup()
+                if renderLogs then renderLogs() end
+            end
+
+            for _, preset in ipairs(minPresets) do
+                local opt = Instance.new("TextButton")
+                opt.Size = UDim2.new(1, 0, 0, 18)
+                opt.BackgroundColor3 = THEME.Panel
+                opt.BorderSizePixel = 0
+                opt.Text = preset.label
+                opt.TextColor3 = preset.isRed and Color3.fromRGB(245, 110, 110) or (preset.isGold and THEME.Gold or THEME.Text)
+                opt.TextSize = 8.5
+                opt.Font = FONT_FAMILY
+                opt.ZIndex = 122
+                opt.Parent = pScroll
+
+                local oCorner = Instance.new("UICorner")
+                oCorner.CornerRadius = UDim.new(0, 3)
+                oCorner.Parent = opt
+
+                opt.MouseButton1Click:Connect(function()
+                    applyValue(preset.val)
+                end)
+            end
+
+            pLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+                pScroll.CanvasSize = UDim2.new(0, 0, 0, pLayout.AbsoluteContentSize.Y + 2)
+            end)
+
+            -- Custom limit input box
+            local customInput = Instance.new("TextBox")
+            customInput.Size = UDim2.new(1, -8, 0, 22)
+            customInput.Position = UDim2.new(0, 4, 1, -26)
+            customInput.BackgroundColor3 = THEME.Bg
+            customInput.PlaceholderText = "Custom (e.g. 1.6b)..."
+            customInput.PlaceholderColor3 = Color3.fromRGB(90, 100, 120)
+            customInput.Text = ""
+            customInput.TextColor3 = THEME.Gold
+            customInput.TextSize = 8.5
+            customInput.Font = FONT_REGULAR
+            customInput.ClearTextOnFocus = false
+            customInput.ZIndex = 122
+            customInput.Parent = popup
+
+            local ciCorner = Instance.new("UICorner")
+            ciCorner.CornerRadius = UDim.new(0, 4)
+            ciCorner.Parent = customInput
+            local ciStroke = Instance.new("UIStroke")
+            ciStroke.Color = THEME.Stroke
+            ciStroke.Thickness = 1
+            ciStroke.Parent = customInput
+
+            customInput.FocusLost:Connect(function(enterPressed)
+                if enterPressed and #customInput.Text:gsub("%s+", "") > 0 then
+                    local val = getGenerationValue(customInput.Text)
+                    applyValue(val)
+                end
+            end)
         end)
     end
 end
 
-AddInput.FocusLost:Connect(function(enterPressed)
-    if enterPressed and #AddInput.Text:gsub("%s+", "") > 0 then
+local function addExclusionFromInput()
+    local raw = NameInput.Text:gsub("^%s+", ""):gsub("%s+$", "")
+    if #raw > 0 then
         playSound("click")
-        local newTerm = AddInput.Text:gsub("^%s+", ""):gsub("%s+$", "")
-        table.insert(state.blacklist, newTerm)
+        local newRule = parseBlacklistRule(raw)
+
+        local found = false
+        for i, existing in ipairs(state.blacklist) do
+            local ex = parseBlacklistRule(existing)
+            if ex.term == newRule.term then
+                state.blacklist[i] = newRule
+                found = true
+                break
+            end
+        end
+        if not found then
+            table.insert(state.blacklist, newRule)
+        end
+
         saveBlacklist()
-        AddInput.Text = ""
+        NameInput.Text = ""
+        closeActivePopup()
         renderBlacklistTags()
-        renderLogs()
+        if renderLogs then renderLogs() end
+    end
+end
+
+AddBtn.MouseButton1Click:Connect(addExclusionFromInput)
+NameInput.FocusLost:Connect(function(enterPressed)
+    if enterPressed then
+        addExclusionFromInput()
     end
 end)
 
@@ -1426,13 +1822,12 @@ renderLogs = function()
                 local genStr = pet.gen or "$0/s"
                 local rarity = pet.rarity or ""
                 local uid = jobId .. "_" .. petName .. "_" .. genStr
-
                 if not state.clearedLogs[uid] then
-                    if isBlacklisted(petName) then
+                    local genVal = getGenerationValue(genStr)
+                    local og = isOG(petName, rarity)
+                    if not og and isBlacklisted(petName, genVal) then
                         blockedCount = blockedCount + 1
                     else
-                        local genVal = getGenerationValue(genStr)
-                        local og = isOG(petName, rarity)
 
                         local pass = false
                         if state.minFilter == -1 then
